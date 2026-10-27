@@ -247,7 +247,7 @@ source:
 - Logging is configured in the `Serilog` section of `appsettings.json` next to the executable (format of
   Serilog.Settings.Configuration). The shipped file writes:
   - to the console, `Information` and above;
-  - a text log per run, `taskus_<yyyyMMdd_HHmmss>.log`, with debug detail;
+  - a text log per run, `taskus_<yyyyMMdd_HHmmss>.log`;
   - a JSON log per run, `taskus_<yyyyMMdd_HHmmss>.json`: one JSON object per line (Serilog `JsonFormatter`),
     with the message template and its properties as separate fields, for log tools and scripts.
 - In a sink `path`, `{run}` becomes the run start time. A relative path resolves against the log folder: `logs`
@@ -255,6 +255,45 @@ source:
 - Sinks, levels and output templates change in `appsettings.json` without a rebuild. The executable includes the
   Console and File sinks; another sink package needs a rebuild with that package referenced.
 - Without `appsettings.json`, Taskus logs to the console and to a text file per run.
+- Logging is structured: every message is a template with named properties (`{Task}`, `{Unit}`, `{Row}`,
+  `{Url}`, ...), and the JSON log keeps them as separate fields. Events of a task also carry a `Task` property.
+
+### Log levels
+
+The minimum level is `Information` in the shipped `appsettings.json`. To look into a problem, raise the detail for
+one run with `--log-level` (`trace`, `debug`, `information`, `warning`, `error`); it overrides the settings file.
+The console stays at `Information`; the files get the extra detail.
+
+| Level         | What is logged                                                                                                                                                                                                                                        |
+|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Error`       | A unit or run that failed with an exception; a report that could not be saved or sent                                                                                                                                                                 |
+| `Warning`     | Row errors, failed units, a stopped run, HTTP retries                                                                                                                                                                                                 |
+| `Information` | Unit start and summary (read, written, errors, time), task result, report saved or mailed, moved files                                                                                                                                                |
+| `Debug`       | Task settings (no values from secrets), secrets count, files found, database host and database, prepared SQL and column types, commit and rollback, SMTP server, HTTP method, URL template, retry and rate limit, header names, output files, timings |
+| `Trace`       | Every source row and mapped row (values), every HTTP call with status and time, every e-mail sent (recipient count only)                                                                                                                              |
+
+Row values appear only at `Trace` and in the first ten rows of a dry run. Sinks never log row data themselves.
+
+### Sensitive data in logs and reports
+
+- Connection strings, passwords, HTTP header values and secret values are never logged on purpose.
+- Values from `secrets.yaml` are also masked as `***` wherever they could still show up: in log properties and in
+  the error texts of the run report (`.xlsx` and e-mail). This covers, for example, a token in a URL
+  (`?key=${secret:api_token}`), which appears in HTTP error messages. Masked are: every top-level text secret,
+  values of keys named like `password`, `pwd`, `token`, `secret`, `key` inside secret mappings, and `Password=`
+  parts of connection strings. Values shorter than four characters are not masked.
+- `logExclude` lists row fields whose values are replaced with `***` wherever rows are logged (trace and dry run):
+
+  ```yaml
+  logExclude: [email, personal_code]   # source and mapped field names, case-insensitive
+  ```
+
+Known limits (third iteration):
+
+- Error texts can still quote a row value: a failed type conversion (`'abc' cannot be converted to integer`) or
+  an HTTP URL built from row fields. `logExclude` does not apply to error texts or to the run report.
+- Exception stack traces (logged at `Error`) are not masked.
+- A secret written directly into a task file, not through `${secret:...}`, is not known to the mask.
 - At the end of a run Taskus builds a summary: rows read, rows written, errors, and the first N errors with the
   source file, row number and reason. With several input files the summary has one section per file.
 - `report.folder` saves the summary as an `.xlsx` file (sheets `Summary` and `Errors`). `report.mailTo` sends
@@ -296,6 +335,12 @@ First iteration: Excel, PostgreSQL and SMTP transports, the `http` sink. Second 
 retries and rate limit.
 
 Example tasks and a secrets template are in `examples/`.
+
+Third iteration (planned):
+
+- `logExclude` for error texts and the run report: drop or mask the values of listed fields in row errors, and
+  build URLs in error messages without them; consider masking exception texts.
+- Decide whether `logExclude` should also accept nested paths (`address.city`) for `http` source rows.
 
 Not done yet, added when a task needs them: pagination for the `http` source, keeping the API response in the
 `http` sink, batched database inserts, other databases.

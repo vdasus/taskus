@@ -21,6 +21,7 @@ taskus run tasks/import-clients.yaml          # one task
 taskus run tasks/                             # every *.yaml / *.yml in a folder
 taskus run tasks/import-clients.yaml --dry-run
 taskus validate tasks/
+taskus run tasks/import-clients.yaml --log-level=trace   # every row and HTTP call in the log files
 ```
 
 Exit codes: `0` success, `1` the run had errors, `2` a task file is invalid.

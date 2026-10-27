@@ -1,19 +1,20 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using Npgsql;
+using Serilog;
 using Taskus.Config;
 using Taskus.Pipeline;
 
 namespace Taskus.Transports;
 
 /// <summary>The result of <c>query</c> is one unit.</summary>
-public sealed class PostgresSource(string connection, string query) : ISource
+public sealed class PostgresSource(string connection, string query, ILogger log) : ISource
 {
-    public static Result<ISource> Create(Settings settings)
+    public static Result<ISource> Create(Settings settings, ILogger log)
     {
         var connection = settings.Required("connection");
         var query = settings.Required("query");
-        return Result.Combine("; ", connection, query).Map(() => (ISource)new PostgresSource(connection.Value, query.Value));
+        return Result.Combine("; ", connection, query).Map(() => (ISource)new PostgresSource(connection.Value, query.Value, log));
     }
 
     public IEnumerable<SourceUnit> Units()
@@ -25,6 +26,8 @@ public sealed class PostgresSource(string connection, string query) : ISource
     {
         await using var db = new NpgsqlConnection(connection);
         await db.OpenAsync(ct);
+        log.Debug("Connected to {Host}:{Port}/{Database} as {User}", db.Host, db.Port, db.Database, db.UserName);
+        log.Debug("Query: {Query}", query);
         await using var command = new NpgsqlCommand(query, db);
         await using var reader = await command.ExecuteReaderAsync(ct);
         var number = 0;
@@ -35,21 +38,23 @@ public sealed class PostgresSource(string connection, string query) : ISource
                 row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
             yield return new SourceRow(++number, row);
         }
+
+        log.Debug("Query returned {RowCount} rows", number);
     }
 }
 
 public enum TransactionScope { PerRow, All }
 
 /// <summary>Inserts rows into <c>table</c>. Columns are the mapped field names; values convert to the column types.</summary>
-public sealed class PostgresSink(string connection, string table, TransactionScope transaction) : ISink
+public sealed class PostgresSink(string connection, string table, TransactionScope transaction, ILogger log) : ISink
 {
-    public static Result<ISink> Create(Settings settings)
+    public static Result<ISink> Create(Settings settings, ILogger log)
     {
         var connection = settings.Required("connection");
         var table = settings.Required("table");
         var transaction = settings.Enum("transaction", TransactionScope.PerRow);
         return Result.Combine("; ", connection, table, transaction)
-            .Map(() => (ISink)new PostgresSink(connection.Value, table.Value, transaction.Value));
+            .Map(() => (ISink)new PostgresSink(connection.Value, table.Value, transaction.Value, log));
     }
 
     public async Task<Result<ISinkSession>> OpenAsync(string unit, CancellationToken ct)
@@ -59,7 +64,9 @@ public sealed class PostgresSink(string connection, string table, TransactionSco
         {
             await db.OpenAsync(ct);
             var tx = transaction == TransactionScope.All ? await db.BeginTransactionAsync(ct) : null;
-            return new Session(db, tx, table);
+            log.Debug("{Unit}: connected to {Host}:{Port}/{Database} as {User}, transaction {Transaction}",
+                unit, db.Host, db.Port, db.Database, db.UserName, transaction);
+            return new Session(db, tx, table, log);
         }
         catch (NpgsqlException ex)
         {
@@ -68,9 +75,10 @@ public sealed class PostgresSink(string connection, string table, TransactionSco
         }
     }
 
-    private sealed class Session(NpgsqlConnection db, NpgsqlTransaction? tx, string table) : ISinkSession
+    private sealed class Session(NpgsqlConnection db, NpgsqlTransaction? tx, string table, ILogger log) : ISinkSession
     {
         private NpgsqlCommand? insert;
+        private bool committed;
         private IReadOnlyList<(string Name, Type Type, string DataType)> columns = [];
 
         public bool AllOrNothing => tx is not null;
@@ -104,7 +112,12 @@ public sealed class PostgresSink(string connection, string table, TransactionSco
         public async Task<Result> CompleteAsync(CancellationToken ct)
         {
             if (tx is not null)
+            {
                 await tx.CommitAsync(ct);
+                committed = true;
+                log.Debug("Committed inserts into {Table}", table);
+            }
+
             return Result.Success();
         }
 
@@ -113,7 +126,11 @@ public sealed class PostgresSink(string connection, string table, TransactionSco
             if (insert is not null)
                 await insert.DisposeAsync();
             if (tx is not null)
+            {
                 await tx.DisposeAsync(); // rolls back when not committed
+                if (!committed)
+                    log.Debug("Rolled back inserts into {Table}", table);
+            }
             await db.DisposeAsync();
         }
 
@@ -131,6 +148,7 @@ public sealed class PostgresSink(string connection, string table, TransactionSco
             foreach (var _ in fields)
                 command.Parameters.Add(new NpgsqlParameter());
             await command.PrepareAsync(ct);
+            log.Debug("Prepared {Sql}; column types {ColumnTypes}", command.CommandText, columns.Select(c => $"{c.Name}: {c.DataType}"));
             return command;
         }
 

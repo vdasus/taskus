@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
@@ -29,10 +30,12 @@ public sealed class HttpEndpoint
     private readonly ResiliencePipeline<HttpResponseMessage> pipeline;
     private readonly Throttle? throttle;
     private readonly string path;
+    private readonly ILogger log;
 
     private HttpEndpoint(HttpClient client, HttpMethod method, TaskTemplate url, IReadOnlyList<KeyValuePair<string, string>> headers,
-        ResiliencePipeline<HttpResponseMessage> pipeline, Throttle? throttle, string path)
+        ResiliencePipeline<HttpResponseMessage> pipeline, Throttle? throttle, string path, ILogger log)
     {
+        this.log = log;
         this.client = client;
         Method = method;
         this.url = url;
@@ -58,6 +61,9 @@ public sealed class HttpEndpoint
 
         return Result.Combine("; ", method, url, headers, timeout, rateLimit, retry).Map(() =>
         {
+            // Header names only: values carry tokens.
+            log.Debug("{Path}: {Method} {Url}, timeout {Timeout} s, retry {Retry}, rate limit {RateLimit}/s, headers {Headers}",
+                settings.Path, method.Value, settings.Optional("url"), timeout.Value, retry.Value, rateLimit.Value, headers.Value.Select(h => h.Key));
             var httpMethod = new HttpMethod(method.Value);
             var pipeline = retry.Value is { Attempts: > 0 } r
                 ? new ResiliencePipelineBuilder<HttpResponseMessage>().AddRetry(RetryOptions(r, httpMethod, log)).Build()
@@ -66,7 +72,7 @@ public sealed class HttpEndpoint
                 new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(timeout.Value) },
                 httpMethod, url.Value, headers.Value, pipeline,
                 rateLimit.Value > 0 ? new Throttle(rateLimit.Value, TimeProvider.System) : null,
-                settings.Path);
+                settings.Path, log);
         });
     }
 
@@ -92,7 +98,10 @@ public sealed class HttpEndpoint
                 if (throttle is not null)
                     await throttle.WaitAsync(token);
                 using var request = Request(target, content());
-                return await client.SendAsync(request, token);
+                var clock = Stopwatch.StartNew();
+                var answer = await client.SendAsync(request, token);
+                log.Verbose("{Method} {Url}: HTTP {Status} in {ElapsedMs} ms", Method, target, (int)answer.StatusCode, clock.ElapsedMilliseconds);
+                return answer;
             }, ct);
 
             if (response.IsSuccessStatusCode)

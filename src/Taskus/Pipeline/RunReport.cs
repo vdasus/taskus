@@ -27,4 +27,16 @@ public sealed class RunReport(string task)
     public List<UnitReport> Units { get; } = [];
 
     public bool HasErrors => Failure is not null || Units.Any(u => u.HasErrors);
+
+    /// <summary>Rewrites every failure and error text, e.g. to mask secrets.</summary>
+    public void Redact(Func<string, string> redact)
+    {
+        Failure = Failure is null ? null : redact(Failure);
+        foreach (var unit in Units)
+        {
+            unit.Failure = unit.Failure is null ? null : redact(unit.Failure);
+            for (var i = 0; i < unit.Errors.Count; i++)
+                unit.Errors[i] = unit.Errors[i] with { Message = redact(unit.Errors[i].Message) };
+        }
+    }
 }

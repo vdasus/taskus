@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Serilog;
 using Taskus.Config;
 using Taskus.Mapping;
@@ -5,14 +6,20 @@ using Taskus.Mapping;
 namespace Taskus.Pipeline;
 
 /// <summary>Runs source → map → sink for every unit of the source and builds the run report.</summary>
-public sealed class Runner(string task, ISource source, RowMapper mapper, ISink sink, ErrorPolicy onError, int maxErrors, ILogger log)
+/// <param name="logExclude">Field names whose values are replaced with <c>***</c> wherever rows are logged.</param>
+public sealed class Runner(
+    string task, ISource source, RowMapper mapper, ISink sink, ErrorPolicy onError, int maxErrors, ILogger log,
+    IReadOnlyCollection<string>? logExclude = null)
 {
     private const int DryRunRowsLogged = 10;
+    private readonly HashSet<string> hidden = new(logExclude ?? [], StringComparer.OrdinalIgnoreCase);
 
     public async Task<RunReport> RunAsync(bool dryRun, CancellationToken ct)
     {
         var report = new RunReport(task) { DryRun = dryRun };
         var errors = 0;
+        var clock = Stopwatch.StartNew();
+        log.Debug("{Task}: run started, dry run {DryRun}, onError {OnError}, maxErrors {MaxErrors}", task, dryRun, onError, maxErrors);
         try
         {
             foreach (var unit in source.Units())
@@ -22,12 +29,17 @@ public sealed class Runner(string task, ISource source, RowMapper mapper, ISink 
                 report.Units.Add(unitReport);
                 log.Information("{Task}: processing {Unit}", task, unit.Name);
 
+                var unitClock = Stopwatch.StartNew();
                 var stop = await RunUnitAsync(unit, unitReport, dryRun, () => ++errors, ct);
-                log.Information("{Task}: {Unit} read {Read}, written {Written}, errors {Errors}{Failure}",
-                    task, unit.Name, unitReport.Read, unitReport.Written, unitReport.Errors.Count,
-                    unitReport.Failure is null ? "" : $", failed: {unitReport.Failure}");
+                log.Information("{Task}: {Unit} read {Read}, written {Written}, errors {Errors}, completed {Completed} in {ElapsedMs} ms",
+                    task, unit.Name, unitReport.Read, unitReport.Written, unitReport.Errors.Count, unitReport.Completed, unitClock.ElapsedMilliseconds);
+                if (unitReport.Failure is not null)
+                    log.Warning("{Task}: {Unit} failed: {Failure}", task, unit.Name, unitReport.Failure);
                 if (stop)
+                {
+                    log.Warning("{Task}: run stopped after {Errors} errors (onError {OnError}, maxErrors {MaxErrors})", task, errors, onError, maxErrors);
                     break;
+                }
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -37,6 +49,7 @@ public sealed class Runner(string task, ISource source, RowMapper mapper, ISink 
         }
 
         report.Finished = DateTime.Now;
+        log.Debug("{Task}: run finished in {ElapsedMs} ms, {Units} units, {Errors} errors", task, clock.ElapsedMilliseconds, report.Units.Count, errors);
         return report;
     }
 
@@ -58,13 +71,15 @@ public sealed class Runner(string task, ISource source, RowMapper mapper, ISink 
                 }
 
                 session = opened.Value;
+                log.Debug("{Task}: {Unit} sink opened, all or nothing {AllOrNothing}", task, unit.Name, session.AllOrNothing);
             }
 
             var aborted = false;
             await foreach (var row in unit.Rows.WithCancellation(ct))
             {
                 report.Read++;
-                var written = await WriteAsync(session, row, report, ct);
+                log.Verbose("{Task}: {Unit} row {Row} read: {@Values}", task, unit.Name, row.Number, Hide(row.Values));
+                var written = await WriteAsync(session, unit.Name, row, report, ct);
                 if (written.IsSuccess)
                 {
                     report.Written++;
@@ -87,11 +102,13 @@ public sealed class Runner(string task, ISource source, RowMapper mapper, ISink 
                 var completed = session is null ? Result.Success() : await session.CompleteAsync(ct);
                 report.Completed = completed.IsSuccess;
                 report.Failure = completed.IsFailure ? completed.Error : null;
+                log.Debug("{Task}: {Unit} sink completed {Completed}", task, unit.Name, report.Completed);
             }
             else if (session is { AllOrNothing: true })
             {
                 report.Written = 0;
                 report.Failure = "rolled back";
+                log.Debug("{Task}: {Unit} rolled back", task, unit.Name);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -111,16 +128,22 @@ public sealed class Runner(string task, ISource source, RowMapper mapper, ISink 
         return stopRun;
     }
 
-    private async Task<Result> WriteAsync(ISinkSession? session, SourceRow row, UnitReport report, CancellationToken ct)
+    private async Task<Result> WriteAsync(ISinkSession? session, string unit, SourceRow row, UnitReport report, CancellationToken ct)
     {
         var mapped = mapper.Map(row.Values);
         if (mapped.IsFailure)
             return mapped;
+        log.Verbose("{Task}: {Unit} row {Row} mapped: {@Values}", task, unit, row.Number, Hide(mapped.Value));
         if (session is not null)
             return await session.WriteAsync(mapped.Value, ct);
 
         if (report.Read <= DryRunRowsLogged)
-            log.Information("{Task}: dry run, row {Row}: {@Values}", task, row.Number, mapped.Value);
+            log.Information("{Task}: dry run, row {Row}: {@Values}", task, row.Number, Hide(mapped.Value));
         return Result.Success();
     }
+
+    private Row Hide(Row row) =>
+        hidden.Count == 0 || !row.Keys.Any(hidden.Contains)
+            ? row
+            : row.ToDictionary(kv => kv.Key, kv => hidden.Contains(kv.Key) ? SecretMask.Mask : kv.Value, StringComparer.OrdinalIgnoreCase);
 }

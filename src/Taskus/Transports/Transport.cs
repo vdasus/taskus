@@ -11,7 +11,7 @@ public static class Transport
         settings.Required("type").Bind(type => type.ToLowerInvariant() switch
         {
             "excel" => ExcelSource.Create(settings, log),
-            "postgres" => PostgresSource.Create(settings),
+            "postgres" => PostgresSource.Create(settings, log),
             "http" => HttpSource.Create(settings, log),
             _ => Result.Failure<ISource>($"{settings.Path}.type: unknown source '{type}' (excel | postgres | http)"),
         });
@@ -19,9 +19,9 @@ public static class Transport
     public static Result<ISink> Sink(Settings settings, Settings? smtp, ILogger log) =>
         settings.Required("type").Bind(type => type.ToLowerInvariant() switch
         {
-            "excel" => ExcelSink.Create(settings),
-            "postgres" => PostgresSink.Create(settings),
-            "smtp" => SmtpSink.Create(settings, smtp),
+            "excel" => ExcelSink.Create(settings, log),
+            "postgres" => PostgresSink.Create(settings, log),
+            "smtp" => SmtpSink.Create(settings, smtp, log),
             "http" => HttpSink.Create(settings, log),
             _ => Result.Failure<ISink>($"{settings.Path}.type: unknown sink '{type}' (excel | postgres | smtp | http)"),
         });

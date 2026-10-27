@@ -18,7 +18,10 @@ public static class Reporter
     public static async Task<Result> SendAsync(TaskDefinition task, RunReport report, ILogger log, CancellationToken ct)
     {
         if (!ShouldReport(task.Report.When, report))
+        {
+            log.Debug("{Task}: no report (when {When}, errors {HasErrors})", task.Name, task.Report.When, report.HasErrors);
             return Result.Success();
+        }
 
         try
         {
@@ -34,7 +37,7 @@ public static class Reporter
                 var options = SmtpOptions.Create(smtp);
                 if (options.IsFailure)
                     return options;
-                await MailAsync(options.Value, to, report, file, ct);
+                await MailAsync(options.Value, to, report, file, log, ct);
                 log.Information("{Task}: report mailed to {To}", task.Name, to);
             }
 
@@ -91,7 +94,7 @@ public static class Reporter
         return text.ToString();
     }
 
-    private static async Task MailAsync(SmtpOptions options, string to, RunReport report, string? attachment, CancellationToken ct)
+    private static async Task MailAsync(SmtpOptions options, string to, RunReport report, string? attachment, ILogger log, CancellationToken ct)
     {
         var message = options.Message(to, $"Taskus: {report.Task}: {(report.HasErrors ? "errors" : "success")}");
         var body = new BodyBuilder { TextBody = Text(report) };
@@ -99,7 +102,7 @@ public static class Reporter
             await body.Attachments.AddAsync(attachment, ct);
         message.Body = body.ToMessageBody();
 
-        using var client = await options.ConnectAsync(ct);
+        using var client = await options.ConnectAsync(log, ct);
         await client.SendAsync(message, ct);
         await client.DisconnectAsync(quit: true, ct);
     }

@@ -14,8 +14,10 @@ public static class ExitCode
 }
 
 /// <summary>Runs or validates one task file, or every task file in a folder.</summary>
-public sealed class App(ILogger log)
+public sealed class App(ILogger log, SecretMask? secretMask = null)
 {
+    private readonly SecretMask mask = secretMask ?? new SecretMask();
+
     public async Task<int> ExecuteAsync(string verb, string path, string secretsFile, bool dryRun, CancellationToken ct)
     {
         var files = TaskFiles(path);
@@ -25,6 +27,10 @@ public sealed class App(ILogger log)
             log.Error("{Error}", failed.Error);
             return ExitCode.Invalid;
         }
+
+        mask.Add(secrets.Value);
+        log.Debug("Loaded {SecretCount} secrets from {SecretsFile}", secrets.Value.Count, secretsFile);
+        log.Debug("{Verb}: {TaskCount} task files in {Path}", verb, files.Value.Count, path);
 
         var exit = ExitCode.Success;
         foreach (var file in files.Value)
@@ -62,6 +68,7 @@ public sealed class App(ILogger log)
 
         var (task, runner) = job.Value;
         var report = await runner.RunAsync(dryRun, ct);
+        report.Redact(mask.Apply); // error texts can quote a URL with a secret in it; the report may go by e-mail
         log.Information("{Task}: finished, {Result}", task.Name, report.HasErrors ? "with errors" : "success");
         if (dryRun)
             return report.HasErrors ? ExitCode.Errors : ExitCode.Success;
@@ -73,12 +80,15 @@ public sealed class App(ILogger log)
     private Result<(TaskDefinition Task, Runner Runner)> Build(string file, IReadOnlyDictionary<string, object?> secrets) =>
         TaskLoader.Load(file, secrets).Bind(task =>
         {
+            var taskLog = log.ForContext("Task", task.Name);
+            taskLog.Debug("{File}: source {SourceType}, sink {SinkType}, {FieldCount} mapped fields, onError {OnError}, maxErrors {MaxErrors}, hidden fields {LogExclude}",
+                file, task.Source.Optional("type"), task.Sink.Optional("type"), task.Map.Count, task.OnError, task.MaxErrors, task.LogExclude);
             var mapper = RowMapper.Create(task.Map);
-            var source = Transport.Source(task.Source, log);
-            var sink = Transport.Sink(task.Sink, task.Smtp, log);
+            var source = Transport.Source(task.Source, taskLog);
+            var sink = Transport.Sink(task.Sink, task.Smtp, taskLog);
             return Result.Combine("; ", mapper, source, sink)
                 .MapError(error => $"{file}: {error}")
-                .Map(() => (task, new Runner(task.Name, source.Value, mapper.Value, sink.Value, task.OnError, task.MaxErrors, log)));
+                .Map(() => (task, new Runner(task.Name, source.Value, mapper.Value, sink.Value, task.OnError, task.MaxErrors, taskLog, task.LogExclude)));
         });
 
     private static Result<IReadOnlyList<string>> TaskFiles(string path)

@@ -1,6 +1,7 @@
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
+using Serilog;
 using Taskus.Config;
 using Taskus.Pipeline;
 
@@ -17,7 +18,10 @@ public sealed record SmtpOptions(string Server, int Port, string? User, string? 
             .Map(() => new SmtpOptions(server.Value, port.Value, settings.Optional("user"), settings.Optional("password"), from.Value));
     }
 
-    public async Task<SmtpClient> ConnectAsync(CancellationToken ct)
+    // The generated record ToString() would print Password.
+    public override string ToString() => $"{Server}:{Port} as {User ?? "(anonymous)"}, from {From}";
+
+    public async Task<SmtpClient> ConnectAsync(ILogger log, CancellationToken ct)
     {
         var client = new SmtpClient();
         try
@@ -25,6 +29,7 @@ public sealed record SmtpOptions(string Server, int Port, string? User, string? 
             await client.ConnectAsync(Server, Port, SecureSocketOptions.Auto, ct);
             if (User is not null)
                 await client.AuthenticateAsync(User, Password ?? "", ct);
+            log.Debug("Connected to {Server}:{Port}, authenticated as {User}", Server, Port, User ?? "(anonymous)");
             return client;
         }
         catch
@@ -46,20 +51,20 @@ public sealed record SmtpOptions(string Server, int Port, string? User, string? 
 }
 
 /// <summary>Sends one e-mail per row. Fields: <c>to</c>, <c>subject</c>, <c>body</c>, optional <c>cc</c>.</summary>
-public sealed class SmtpSink(SmtpOptions options, bool html) : ISink
+public sealed class SmtpSink(SmtpOptions options, bool html, ILogger log) : ISink
 {
-    public static Result<ISink> Create(Settings settings, Settings? smtp)
+    public static Result<ISink> Create(Settings settings, Settings? smtp, ILogger log)
     {
         var html = settings.Bool("html", false);
         var options = smtp is null ? Result.Failure<SmtpOptions>("an smtp sink needs an smtp section") : SmtpOptions.Create(smtp);
-        return Result.Combine("; ", html, options).Map(() => (ISink)new SmtpSink(options.Value, html.Value));
+        return Result.Combine("; ", html, options).Map(() => (ISink)new SmtpSink(options.Value, html.Value, log));
     }
 
     public async Task<Result<ISinkSession>> OpenAsync(string unit, CancellationToken ct)
     {
         try
         {
-            return new Session(await options.ConnectAsync(ct), options, html);
+            return new Session(await options.ConnectAsync(log, ct), options, html, log);
         }
         catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or MailKit.ProtocolException or AuthenticationException)
         {
@@ -67,7 +72,7 @@ public sealed class SmtpSink(SmtpOptions options, bool html) : ISink
         }
     }
 
-    private sealed class Session(SmtpClient client, SmtpOptions options, bool html) : ISinkSession
+    private sealed class Session(SmtpClient client, SmtpOptions options, bool html, ILogger log) : ISinkSession
     {
         public bool AllOrNothing => false; // a sent e-mail cannot be recalled
 
@@ -81,6 +86,7 @@ public sealed class SmtpSink(SmtpOptions options, bool html) : ISink
                 var message = options.Message(to, Text(row, "subject") ?? "", Text(row, "cc"));
                 message.Body = new TextPart(html ? "html" : "plain") { Text = Text(row, "body") ?? "" };
                 await client.SendAsync(message, ct);
+                log.Verbose("Mail sent to {RecipientCount} recipients", message.To.Count + message.Cc.Count); // addresses are row data
                 return Result.Success();
             }
             catch (Exception ex) when (ex is ParseException or SmtpCommandException or SmtpProtocolException)

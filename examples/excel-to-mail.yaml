@@ -16,6 +16,7 @@ sink:
   type: smtp
   html: false
 onError: continue
+logExclude: [Email, to]      # e-mail addresses never appear in trace logs
 report:
   mailTo: me@example.com
   when: always

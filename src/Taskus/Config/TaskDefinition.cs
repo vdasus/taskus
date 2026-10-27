@@ -19,7 +19,8 @@ public sealed record TaskDefinition(
     ErrorPolicy OnError,
     int MaxErrors,
     ReportOptions Report,
-    Settings? Smtp);
+    Settings? Smtp,
+    IReadOnlyList<string> LogExclude);
 
 public static class TaskLoader
 {
@@ -50,12 +51,13 @@ public static class TaskLoader
         var maxErrors = root.Int("maxErrors", 100);
         var smtp = root.OptionalSection("smtp");
         var report = root.OptionalSection("report").Bind(ReadReport);
+        var logExclude = root.StringList("logExclude");
 
-        return Result.Combine("; ", source, sink, map, onError, maxErrors, smtp, report)
+        return Result.Combine("; ", source, sink, map, onError, maxErrors, smtp, report, logExclude)
             .Ensure(() => report.Value.MailTo is null || smtp.Value is not null, "report.mailTo needs an smtp section")
             .Map(() => new TaskDefinition(
                 root.Optional("name") ?? fallbackName,
-                source.Value, map.Value, sink.Value, onError.Value, maxErrors.Value, report.Value, smtp.Value));
+                source.Value, map.Value, sink.Value, onError.Value, maxErrors.Value, report.Value, smtp.Value, logExclude.Value));
     }
 
     private static Result<ReportOptions> ReadReport(Settings? report) =>

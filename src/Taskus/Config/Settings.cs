@@ -84,6 +84,14 @@ public sealed class Settings
         return result;
     }
 
+    /// <summary>A list of text values. Missing key gives an empty list.</summary>
+    public Result<IReadOnlyList<string>> StringList(string key) => values.GetValueOrDefault(key) switch
+    {
+        null => Array.Empty<string>(),
+        IList<object?> list when list.All(item => item is string) => list.Cast<string>().ToList(),
+        _ => Fail<IReadOnlyList<string>>(key, "must be a list of text values"),
+    };
+
     private string Join(string key) => Path.Length == 0 ? key : $"{Path}.{key}";
 
     private Result<T> Fail<T>(string key, string message) => Result.Failure<T>($"{Join(key)} {message}");

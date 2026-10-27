@@ -18,22 +18,34 @@ public sealed class ExcelSource(string folder, string pattern, string? sheet, st
             settings.Optional("failed"),
             log));
 
-    public IEnumerable<SourceUnit> Units() =>
-        Directory.EnumerateFiles(folder, pattern)
+    public IEnumerable<SourceUnit> Units()
+    {
+        var files = Directory.EnumerateFiles(folder, pattern)
             .Where(file => !Path.GetFileName(file).StartsWith("~$", StringComparison.Ordinal)) // Excel lock files
             .Order(StringComparer.OrdinalIgnoreCase)
-            .Select(file => new SourceUnit(Path.GetFileName(file), Read(file).ToAsyncEnumerable(), done => Move(file, done)));
+            .ToList();
+        log.Debug("{FileCount} files match {Pattern} in {Folder}", files.Count, pattern, folder);
+        return files.Select(file => new SourceUnit(Path.GetFileName(file), Read(file).ToAsyncEnumerable(), done => Move(file, done)));
+    }
 
     private IEnumerable<SourceRow> Read(string file)
     {
+        log.Debug("Reading {File}, sheet {Sheet}", file, sheet ?? "(first)");
         var number = 1; // row 1 is the header
+        var empty = 0;
         foreach (IDictionary<string, object?> row in MiniExcel.Query(file, useHeaderRow: true, sheetName: sheet))
         {
             number++;
             if (row.Values.All(v => v is null || v is string { Length: 0 }))
+            {
+                empty++;
                 continue;
+            }
+
             yield return new SourceRow(number, new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase));
         }
+
+        log.Debug("{File}: last sheet row {LastRow}, {EmptyRows} empty rows skipped", file, number, empty);
     }
 
     private void Move(string file, bool completed)
@@ -52,15 +64,15 @@ public sealed class ExcelSource(string folder, string pattern, string? sheet, st
 }
 
 /// <summary>Writes each unit to one .xlsx file. <c>file</c> is a template; <c>unit</c> is the source unit name.</summary>
-public sealed class ExcelSink(string folder, TaskTemplate file, bool overwrite, string sheet) : ISink
+public sealed class ExcelSink(string folder, TaskTemplate file, bool overwrite, string sheet, ILogger log) : ISink
 {
-    public static Result<ISink> Create(Settings settings)
+    public static Result<ISink> Create(Settings settings, ILogger log)
     {
         var folder = settings.Required("folder");
         var file = settings.Required("file").Bind(text => TaskTemplate.Parse($"{settings.Path}.file", text));
         var overwrite = settings.Bool("overwrite", false);
         return Result.Combine("; ", folder, file, overwrite)
-            .Map(() => (ISink)new ExcelSink(folder.Value, file.Value, overwrite.Value, settings.Optional("sheet") ?? "Sheet1"));
+            .Map(() => (ISink)new ExcelSink(folder.Value, file.Value, overwrite.Value, settings.Optional("sheet") ?? "Sheet1", log));
     }
 
     public Task<Result<ISinkSession>> OpenAsync(string unit, CancellationToken ct)
@@ -69,12 +81,13 @@ public sealed class ExcelSink(string folder, TaskTemplate file, bool overwrite, 
         var result = file.Evaluate("sink.file", variables)
             .Map(name => Path.Combine(folder, Convert.ToString(name)!))
             .Ensure(path => overwrite || !File.Exists(path), path => $"{path} already exists and overwrite is false")
-            .Map(path => (ISinkSession)new Session(path, sheet));
+            .Tap(path => log.Debug("{Unit}: output file {Path}, overwrite {Overwrite}", unit, path, overwrite))
+            .Map(path => (ISinkSession)new Session(path, sheet, log));
         return Task.FromResult(result);
     }
 
     // shortcut: rows are buffered until the unit completes; fine for tens of thousands of rows, stream if files grow to millions.
-    private sealed class Session(string path, string sheet) : ISinkSession
+    private sealed class Session(string path, string sheet, ILogger log) : ISinkSession
     {
         private readonly List<Dictionary<string, object?>> rows = [];
 
@@ -90,6 +103,7 @@ public sealed class ExcelSink(string folder, TaskTemplate file, bool overwrite, 
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             MiniExcel.SaveAs(path, rows, sheetName: sheet, overwriteFile: true);
+            log.Debug("Wrote {RowCount} rows to {Path}, sheet {Sheet}", rows.Count, path, sheet);
             return Task.FromResult(Result.Success());
         }
 
