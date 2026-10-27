@@ -1,0 +1,32 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Optionus" Version="0.9.0" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+    <PackageVersion Include="Scriban" Version="7.5.3" />
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="MailKit" Version="4.18.2" />
+    <PackageVersion Include="MiniExcel" Version="1.46.0" />
+    <PackageVersion Include="CSharpFunctionalExtensions" Version="3.7.0" />
+    <PackageVersion Include="Serilog" Version="4.4.0" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="AutoFixture" Version="4.18.1" />
+    <PackageVersion Include="AutoFixture.Xunit3" Version="4.19.0" />
+    <PackageVersion Include="AutoFixture.AutoNSubstitute" Version="4.18.1" />
+    <PackageVersion Include="NSubstitute" Version="6.2.0" />
+    <!-- 7.x is the last major under Apache-2.0; 8.0+ needs a commercial license. Do not upgrade. -->
+    <PackageVersion Include="FluentAssertions" Version="[7.2.2,8.0.0)" />
+  </ItemGroup>
+
+</Project>

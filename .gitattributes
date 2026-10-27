@@ -1,0 +1,23 @@
+# Line endings: LF in the repository and in the working tree. The vault is
+# edited from Windows (Obsidian) and from WSL; WSL tools write LF, so a CRLF
+# working tree made Windows git report unchanged files as modified.
+# No file in this repository carries a UTF-8 BOM — git pattern files and shell
+# scripts break on one.
+* text=auto eol=lf
+
+# Shell scripts and git hooks must keep LF: /bin/sh rejects a CRLF shebang.
+*.sh text eol=lf
+.githooks/** text eol=lf
+
+# YAML that a CI runner executes stays LF: a `run:` block carrying CR would
+# hand \r to the shell.
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# git's own control files stay LF — pattern matching must not see a stray CR.
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# log.md is append-only (newest at top, dated entries) — union merge lets
+# two people append simultaneously without conflicts; dates keep order readable.
+wiki/log.md merge=union
