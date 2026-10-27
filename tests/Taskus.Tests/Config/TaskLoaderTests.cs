@@ -1,3 +1,4 @@
+using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json.Nodes;
 using FluentAssertions;
 using Taskus.Config;
@@ -35,11 +36,8 @@ public class TaskLoaderTests
         ["smtp"] = new JsonObject { ["server"] = "mail.local", ["port"] = "25", ["from"] = "t@example.com" },
     };
 
-    private static Result<TaskOptions> Load(string yaml, JsonObject? secrets = null)
-    {
-        using var temp = new TempFolder();
-        return TaskLoader.Load(temp.Write("t.yaml", yaml), secrets ?? Secrets.None);
-    }
+    private static Result<TaskOptions> Load(string yaml, JsonObject? secrets = null, string file = "t.yaml") =>
+        TaskLoader.Load(new MockFileSystem(new Dictionary<string, MockFileData> { [file] = new(yaml) }), file, secrets ?? Secrets.None);
 
     [Fact]
     [Trait("Category", "Unit")]
@@ -65,10 +63,7 @@ public class TaskLoaderTests
     [Trait("Category", "Unit")]
     public void Load_MinimalTask_UsesDefaults()
     {
-        using var temp = new TempFolder();
-        var file = temp.Write("minimal.yaml", "source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z.xlsx }\n");
-
-        var task = TaskLoader.Load(file, Secrets.None).Value;
+        var task = Load("source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z.xlsx }\n", file: "minimal.yaml").Value;
 
         task.Name.Should().Be("minimal");
         task.OnError.Should().Be(ErrorPolicy.Stop);
@@ -105,6 +100,7 @@ public class TaskLoaderTests
     [InlineData("source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z }\nonError: maybe\n", "onError: must be stop | continue")]
     [InlineData("source: { type: excel, folder: x }\n", "missing required setting 'sink'")]
     [InlineData("source: { type: excel, folder: x }\nsink: { type: http, method: TRACE, url: http://x }\n", "sink.method: must be GET | POST | PUT | PATCH | DELETE")]
+    [InlineData("name: a/b\nsource: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z }\n", "name: must not contain characters")]
     [InlineData("- a\n- b\n", "must be a mapping")]
     public void Load_BadFile_ExplainsTheProblem(string yaml, string error)
     {
@@ -139,10 +135,7 @@ public class TaskLoaderTests
     [Trait("Category", "Unit")]
     public void Load_BrokenYaml_FailsWithFileName()
     {
-        using var temp = new TempFolder();
-        var file = temp.Write("broken.yaml", "source: [unclosed\n");
-
-        var result = TaskLoader.Load(file, Secrets.None);
+        var result = Load("source: [unclosed\n", file: "broken.yaml");
 
         result.IsFailure.Should().BeTrue();
         result.Error.Should().Contain("broken.yaml");

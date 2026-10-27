@@ -19,7 +19,6 @@ public sealed class RunReport(string task)
     public string Task { get; } = task;
     public DateTime Started { get; } = DateTime.Now;
     public DateTime Finished { get; set; }
-    public bool DryRun { get; init; }
 
     /// <summary>A failure outside any unit, e.g. the input folder does not exist.</summary>
     public string? Failure { get; set; }

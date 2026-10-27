@@ -76,6 +76,6 @@ public class LogPrivacyTests
         using var temp = new TempFolder();
         var file = temp.Write("t.yaml", "source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z.xlsx }\nlogExclude: [email, personal_code]\n");
 
-        TaskLoader.Load(file, Secrets.None).Value.LogExclude.Should().Equal("email", "personal_code");
+        TaskLoader.Load(new System.IO.Abstractions.FileSystem(), file, Secrets.None).Value.LogExclude.Should().Equal("email", "personal_code");
     }
 }

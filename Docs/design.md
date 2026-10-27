@@ -113,6 +113,10 @@ After a file is processed it moves:
 - nowhere when the sink could not open (database or mail server unreachable): nothing was read, so the next run
   retries the file.
 
+If the move itself fails (no rights on the target folder, the file is locked), the unit is reported as failed with
+"input not moved, the next run reads it again" and the run goes on with the next file. The rows are already
+written, so the next run writes them a second time unless the file is moved by hand first.
+
 `processed` and `failed` are optional; a file without a target folder stays in place. A name clash in the target
 folder adds a timestamp to the file name.
 
@@ -169,7 +173,9 @@ Batches with a `batchSize` are not supported; add them when a task needs them.
 
 The file name is a Scriban template; `unit` holds the input file name without extension (`query` for a
 database source). `overwrite: true|false` (default `false`) controls an existing file; with `false` the unit fails
-before reading, and the input stays in place. `sheet` names the sheet (default `Sheet1`).
+before reading, and the input stays in place. `sheet` names the sheet (default `Sheet1`). Two units of one run
+cannot write the same file, even with `overwrite: true`: the second unit fails and its input stays in place, so a
+folder source with several files needs `{{ unit }}` in the file name.
 
 With `onError: continue` the file holds the rows that mapped without errors. With `onError: stop` an error leaves
 no file. Rows are kept in memory until the unit ends.
@@ -186,6 +192,9 @@ sink:
 
 Sends one e-mail per row. Mapped fields: `to` (several addresses separated by `,` or `;`), `subject`, `body`,
 optional `cc`. `html: true` sends the body as HTML. Server settings come from the task's `smtp` section.
+With a `user`, the connection must be encrypted: TLS from the start on port 465, STARTTLS on any other port; a
+server without STARTTLS fails instead of receiving the password in plain text. An anonymous relay may run without
+encryption. The same applies to the report mail.
 A sent e-mail cannot be recalled, so this sink never rolls back.
 
 ### HTTP sink
@@ -215,6 +224,8 @@ sink:
 - Any 2xx status is success. Other statuses, network errors and time-outs fail the row; the error message holds
   the status and the response body (an HTML error page is left out, long bodies are cut).
 - The response body is not kept. A call that reached the API cannot be undone, so this sink never rolls back.
+- Redirects (3xx) are not followed: they fail the row. Following them would send custom headers such as an API key
+  to another host and turn a POST into a GET. The same holds for the `http` source.
 
 ### HTTP retries and rate limit
 
@@ -378,7 +389,8 @@ Docs/
 
 There is no separate core library until a second consumer needs one. There is no DI container either:
 `CompositionRoot` is the one place that turns validated task options into a runner with its source, mapper and
-sink. A test checks that `schema/task.schema.json` matches the model; after changing `TaskOptions`, regenerate it
+sink. File access goes through `IFileSystem` (System.IO.Abstractions), created once in `App`; tests replace it
+with `MockFileSystem`. Logging is the exception: Serilog and the configuration reader open their files themselves. A test checks that `schema/task.schema.json` matches the model; after changing `TaskOptions`, regenerate it
 with `taskus schema > schema/task.schema.json`.
 
 Publishing:
@@ -400,6 +412,7 @@ All dependencies are free and open source. Versions are pinned in `Directory.Pac
 | Optionus                                | 0.9.0   | MIT          | Command-line parsing                 |
 | Polly.Core                              | 8.8.1   | BSD-3-Clause | HTTP retries                         |
 | YamlDotNet                              | 18.1.0  | MIT          | Task and secrets files               |
+| System.IO.Abstractions                  | 22.3.0  | MIT          | File system access, testable         |
 | FluentValidation                        | 12.2.0  | Apache-2.0   | Task file rules                      |
 | Scriban                                 | 7.5.3   | BSD-2-Clause | Mapping expressions and templates    |
 | Npgsql                                  | 10.0.3  | PostgreSQL   | PostgreSQL source and sink           |
@@ -424,6 +437,7 @@ Tests:
 | AutoFixture.AutoNSubstitute | 4.18.1  | MIT          |
 | NSubstitute                 | 5.3.0   | BSD-3-Clause |
 | FluentAssertions            | 7.2.2   | Apache-2.0   |
+| TestableIO.System.IO.Abstractions.TestingHelpers | 22.3.0 | MIT |
 
 FluentAssertions is pinned to 7.x: version 8 and later use a commercial license. EPPlus is not used for the
 same reason. ClosedXML (MIT) is an alternative to MiniExcel if rich formatting is needed; it loads the whole

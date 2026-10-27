@@ -38,6 +38,7 @@ public sealed class HttpEndpoint
         log.Debug("{Path}: {Method} {Url}, timeout {Timeout} s, retry {Retry}, rate limit {RateLimit}/s, headers {Headers}",
             path, options.Method, options.Url, options.Timeout, options.Retry, options.RateLimit, options.Headers.Keys);
         Method = new HttpMethod(options.Method.ToString().ToUpperInvariant());
+        // shortcut: never disposed, one per task and the process exits after the run; dispose it if Taskus becomes a service.
         client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(options.Timeout) };
         url = TaskTemplate.Parse(options.Url).Value;
         headers = [.. options.Headers];

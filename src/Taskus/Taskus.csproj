@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>taskus</AssemblyName>
     <RootNamespace>Taskus</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Authors>vdasus</Authors>
     <Copyright>Copyright (C) 2026 vdasus</Copyright>
     <InvariantGlobalization>false</InvariantGlobalization>
@@ -37,6 +37,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="System.IO.Abstractions" />
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 

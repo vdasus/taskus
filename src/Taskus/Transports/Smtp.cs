@@ -15,7 +15,10 @@ public static class Mail
         var client = new SmtpClient();
         try
         {
-            await client.ConnectAsync(options.Server, options.Port, SecureSocketOptions.Auto, ct);
+            // Auto falls back to plain text when the server offers no STARTTLS; a password must never go that way.
+            var security = options.User is null ? SecureSocketOptions.Auto
+                : options.Port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
+            await client.ConnectAsync(options.Server, options.Port, security, ct);
             if (options.User is not null)
                 await client.AuthenticateAsync(options.User, options.Password ?? "", ct);
             log.Debug("Connected to {Server}:{Port}, authenticated as {User}", options.Server, options.Port, options.User ?? "(anonymous)");
@@ -81,9 +84,19 @@ public sealed class SmtpSink(SmtpOptions options, bool html, ILogger log) : ISin
 
         public async ValueTask DisposeAsync()
         {
-            if (client.IsConnected)
-                await client.DisconnectAsync(quit: true);
-            client.Dispose();
+            try
+            {
+                if (client.IsConnected)
+                    await client.DisconnectAsync(quit: true);
+            }
+            catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException or MailKit.ProtocolException)
+            {
+                // the mails are sent; a server that already dropped the connection changes nothing
+            }
+            finally
+            {
+                client.Dispose();
+            }
         }
 
         private static string? Text(Row row, string field) => row.GetValueOrDefault(field)?.ToString();

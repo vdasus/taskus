@@ -131,4 +131,20 @@ public class RunnerTests
         report.Failure.Should().Be("no folder");
         report.HasErrors.Should().BeTrue();
     }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public async Task InputNotMoved_FailsThatUnitAndGoesOn()
+    {
+        var locked = new SourceUnit("a", new[] { new SourceRow(1, new Dictionary<string, object?> { ["id"] = 1 }) }.ToAsyncEnumerable(),
+            _ => throw new IOException("file is in use"));
+
+        var report = await Runner(ErrorPolicy.Stop, 100, locked, Unit("b", 2)).RunAsync(false, TestContext.Current.CancellationToken);
+
+        report.Failure.Should().BeNull();
+        report.Units[0].Should().BeEquivalentTo(new { Written = 1, Completed = false });
+        report.Units[0].Failure.Should().Be("input not moved, the next run reads it again: file is in use");
+        done.Should().Equal(("b", true));
+    }
 }

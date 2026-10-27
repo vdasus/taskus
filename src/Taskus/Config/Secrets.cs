@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
@@ -12,12 +13,12 @@ public static partial class Secrets
     public static JsonObject None => [];
 
     /// <summary>A missing file gives no secrets: tasks without references still run.</summary>
-    public static Result<JsonObject> Load(string file)
+    public static Result<JsonObject> Load(IFileSystem fs, string file)
     {
-        if (!File.Exists(file))
+        if (!fs.File.Exists(file))
             return None;
 
-        return YamlJson.Parse(File.ReadAllText(file)).MapError(error => $"{file}: {error}").Bind(tree => tree switch
+        return YamlJson.Parse(fs.File.ReadAllText(file)).MapError(error => $"{file}: {error}").Bind(tree => tree switch
         {
             null => Result.Success(None),
             JsonObject map => Result.Success(map),

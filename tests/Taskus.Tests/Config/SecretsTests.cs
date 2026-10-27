@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.IO.Abstractions.TestingHelpers;
 using AutoFixture;
 using FluentAssertions;
 using Taskus.Config;
@@ -64,10 +65,9 @@ public class SecretsTests
     [Trait("Category", "Unit")]
     public void Load_ReadsYamlMapping()
     {
-        using var temp = new TempFolder();
-        var file = temp.Write("secrets.yaml", "pg_main: Host=db\nsmtp_main:\n  server: mail.local\n");
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData> { ["secrets.yaml"] = new("pg_main: Host=db\nsmtp_main:\n  server: mail.local\n") });
 
-        var result = Secrets.Load(file);
+        var result = Secrets.Load(fs, "secrets.yaml");
 
         result.IsSuccess.Should().BeTrue();
         result.Value["pg_main"]!.GetValue<string>().Should().Be("Host=db");
@@ -78,7 +78,7 @@ public class SecretsTests
     [Trait("Category", "Unit")]
     public void Load_MissingFile_GivesNoSecrets()
     {
-        var result = Secrets.Load(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        var result = Secrets.Load(new MockFileSystem(), "secrets.yaml");
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeEmpty();

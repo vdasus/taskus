@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using FluentAssertions;
 using Taskus.Config;
 
@@ -41,9 +42,10 @@ public class TaskSchemaTests
     public void Example_LoadsWithExampleSecrets(string name)
     {
         var examples = Path.Combine(RepoRoot(), "examples");
-        var secrets = Secrets.Load(Path.Combine(examples, "secrets.yaml.example")).Value;
+        var fs = new FileSystem();
+        var secrets = Secrets.Load(fs, Path.Combine(examples, "secrets.yaml.example")).Value;
 
-        var result = TaskLoader.Load(Path.Combine(examples, name), secrets);
+        var result = TaskLoader.Load(fs, Path.Combine(examples, name), secrets);
 
         result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error : "");
     }

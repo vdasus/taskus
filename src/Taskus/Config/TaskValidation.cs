@@ -55,6 +55,8 @@ public static class TaskValidation
                         context.AddFailure($"field '{field}': {parsed.Error}");
                 }
             });
+            RuleFor(x => x.Name).Must(name => name!.IndexOfAny(Path.GetInvalidFileNameChars()) < 0).When(x => x.Name is not null)
+                .WithMessage("must not contain characters that a file name cannot have; it names the report file");
             RuleFor(x => x.MaxErrors).GreaterThanOrEqualTo(0).WithMessage("must not be negative");
             RuleForEach(x => x.LogExclude).NotEmpty().WithMessage("field names must not be empty");
             RuleFor(x => x.Smtp).NotNull().When(x => x.Report.MailTo is not null).WithMessage("is required by report.mailTo");

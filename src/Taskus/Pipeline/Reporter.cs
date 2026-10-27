@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using System.Text;
 using MimeKit;
 using MiniExcelLibs;
@@ -15,7 +16,7 @@ public static class Reporter
     public static bool ShouldReport(ReportWhen when, RunReport report) =>
         when == ReportWhen.Always || (when == ReportWhen.OnError && report.HasErrors);
 
-    public static async Task<Result> SendAsync(TaskOptions task, RunReport report, ILogger log, CancellationToken ct)
+    public static async Task<Result> SendAsync(TaskOptions task, RunReport report, ILogger log, IFileSystem fs, CancellationToken ct)
     {
         if (!ShouldReport(task.Report.When, report))
         {
@@ -28,13 +29,13 @@ public static class Reporter
             string? file = null;
             if (task.Report.Folder is { } folder)
             {
-                file = Save(folder, report);
+                file = Save(fs, folder, report);
                 log.Information("{Task}: report saved to {File}", task.Name, file);
             }
 
             if (task.Report.MailTo is { } to && task.Smtp is { } smtp)
             {
-                await MailAsync(smtp, to, report, file, log, ct);
+                await MailAsync(fs, smtp, to, report, file, log, ct);
                 log.Information("{Task}: report mailed to {To}", task.Name, to);
             }
 
@@ -47,10 +48,10 @@ public static class Reporter
         }
     }
 
-    public static string Save(string folder, RunReport report)
+    public static string Save(IFileSystem fs, string folder, RunReport report)
     {
-        Directory.CreateDirectory(folder);
-        var file = Path.Combine(folder, $"{report.Task}_{report.Started:yyyyMMdd_HHmmss}.xlsx");
+        fs.Directory.CreateDirectory(folder);
+        var file = fs.Path.Combine(folder, $"{report.Task}_{report.Started:yyyyMMdd_HHmmss}.xlsx");
         var sheets = new Dictionary<string, object>
         {
             ["Summary"] = report.Units
@@ -61,7 +62,8 @@ public static class Reporter
                 .SelectMany(u => u.Errors.Select(e => new ErrorLine(u.Name, e.Row, e.Message)))
                 .ToList(),
         };
-        MiniExcel.SaveAs(file, sheets, overwriteFile: true);
+        using (var stream = fs.File.Create(file))
+            stream.SaveAs(sheets, excelType: ExcelType.XLSX);
         return file;
     }
 
@@ -91,12 +93,15 @@ public static class Reporter
         return text.ToString();
     }
 
-    private static async Task MailAsync(SmtpOptions options, string to, RunReport report, string? attachment, ILogger log, CancellationToken ct)
+    private static async Task MailAsync(IFileSystem fs, SmtpOptions options, string to, RunReport report, string? attachment, ILogger log, CancellationToken ct)
     {
         var message = options.Message(to, $"Taskus: {report.Task}: {(report.HasErrors ? "errors" : "success")}");
         var body = new BodyBuilder { TextBody = Text(report) };
         if (attachment is not null)
-            await body.Attachments.AddAsync(attachment, ct);
+        {
+            await using var content = fs.File.OpenRead(attachment);
+            await body.Attachments.AddAsync(fs.Path.GetFileName(attachment), content, ct);
+        }
         message.Body = body.ToMessageBody();
 
         using var client = await options.ConnectAsync(log, ct);

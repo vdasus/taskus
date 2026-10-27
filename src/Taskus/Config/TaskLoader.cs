@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -9,13 +10,13 @@ namespace Taskus.Config;
 /// <summary>Task file → secrets resolved → bound to <see cref="TaskOptions"/> → validated.</summary>
 public static partial class TaskLoader
 {
-    public static Result<TaskOptions> Load(string file, JsonObject secrets) =>
-        YamlJson.Parse(File.ReadAllText(file))
+    public static Result<TaskOptions> Load(IFileSystem fs, string file, JsonObject secrets) =>
+        YamlJson.Parse(fs.File.ReadAllText(file))
             .Bind(tree => Secrets.Resolve(tree, secrets))
             .Bind(tree => tree is JsonObject root ? Result.Success(root) : Result.Failure<JsonObject>("must be a mapping"))
             .Bind(root => CheckType(root, "source", typeof(SourceOptions)).Bind(() => CheckType(root, "sink", typeof(SinkOptions))).Map(() => root))
             .Bind(Bind)
-            .Map(task => task with { Name = task.Name ?? Path.GetFileNameWithoutExtension(file) })
+            .Map(task => task with { Name = task.Name ?? fs.Path.GetFileNameWithoutExtension(file) })
             .Bind(TaskValidation.Validate)
             .MapError(error => $"{file}: {error}");
 

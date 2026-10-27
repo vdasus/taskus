@@ -1,4 +1,5 @@
 using Serilog;
+using System.IO.Abstractions;
 using System.Text.Json.Nodes;
 using Taskus.Config;
 using Taskus.Pipeline;
@@ -13,14 +14,15 @@ public static class ExitCode
 }
 
 /// <summary>Runs or validates one task file, or every task file in a folder.</summary>
-public sealed class App(ILogger log, SecretMask? secretMask = null)
+public sealed class App(ILogger log, SecretMask? secretMask = null, IFileSystem? fileSystem = null)
 {
     private readonly SecretMask mask = secretMask ?? new SecretMask();
+    private readonly IFileSystem fs = fileSystem ?? new FileSystem();
 
     public async Task<int> ExecuteAsync(string verb, string path, string secretsFile, bool dryRun, CancellationToken ct)
     {
         var files = TaskFiles(path);
-        var secrets = Secrets.Load(secretsFile);
+        var secrets = Secrets.Load(fs, secretsFile);
         if (Result.Combine("; ", files, secrets) is { IsFailure: true } failed)
         {
             log.Error("{Error}", failed.Error);
@@ -45,7 +47,7 @@ public sealed class App(ILogger log, SecretMask? secretMask = null)
 
     private int Validate(string file, JsonObject secrets)
     {
-        var task = TaskLoader.Load(file, secrets);
+        var task = TaskLoader.Load(fs, file, secrets);
         if (task.IsFailure)
         {
             log.Error("{Error}", task.Error);
@@ -58,7 +60,7 @@ public sealed class App(ILogger log, SecretMask? secretMask = null)
 
     private async Task<int> RunAsync(string file, JsonObject secrets, bool dryRun, CancellationToken ct)
     {
-        var loaded = TaskLoader.Load(file, secrets);
+        var loaded = TaskLoader.Load(fs, file, secrets);
         if (loaded.IsFailure)
         {
             log.Error("{Error}", loaded.Error);
@@ -66,24 +68,24 @@ public sealed class App(ILogger log, SecretMask? secretMask = null)
         }
 
         var task = loaded.Value;
-        var report = await CompositionRoot.Runner(task, log).RunAsync(dryRun, ct);
+        var report = await CompositionRoot.Runner(task, log, fs).RunAsync(dryRun, ct);
         report.Redact(mask.Apply); // error texts can quote a URL with a secret in it; the report may go by e-mail
         log.Information("{Task}: finished, {Result}", task.Name, report.HasErrors ? "with errors" : "success");
         if (dryRun)
             return report.HasErrors ? ExitCode.Errors : ExitCode.Success;
 
-        var sent = await Reporter.SendAsync(task, report, log, ct);
+        var sent = await Reporter.SendAsync(task, report, log, fs, ct);
         return report.HasErrors || sent.IsFailure ? ExitCode.Errors : ExitCode.Success;
     }
 
-    private static Result<IReadOnlyList<string>> TaskFiles(string path)
+    private Result<IReadOnlyList<string>> TaskFiles(string path)
     {
-        if (File.Exists(path))
+        if (fs.File.Exists(path))
             return new[] { path };
-        if (!Directory.Exists(path))
+        if (!fs.Directory.Exists(path))
             return Result.Failure<IReadOnlyList<string>>($"{path}: no such file or folder");
 
-        return Directory.EnumerateFiles(path, "*.yaml").Concat(Directory.EnumerateFiles(path, "*.yml"))
+        return fs.Directory.EnumerateFiles(path, "*.yaml").Concat(fs.Directory.EnumerateFiles(path, "*.yml"))
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

@@ -120,4 +120,23 @@ public class AppTests
 
         exit.Should().Be(ExitCode.Success);
     }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Priority", "High")]
+    public async Task Run_TwoInputsIntoOneFixedFile_KeepsSecondInputAndFailsIt()
+    {
+        using var temp = new TempFolder();
+        Directory.CreateDirectory(temp.File("in"));
+        WriteInput(temp.File("in", "a.xlsx"));
+        WriteInput(temp.File("in", "b.xlsx"));
+        var task = File.ReadAllText(Task(temp)).Replace("file: \"{{ unit }}_out.xlsx\"", "file: all.xlsx\n  overwrite: true");
+        File.WriteAllText(temp.File("task.yaml"), task);
+
+        var exit = await new App(Logger.None).ExecuteAsync("run", temp.File("task.yaml"), "none.yaml", dryRun: false, TestContext.Current.CancellationToken);
+
+        exit.Should().Be(ExitCode.Errors);
+        File.Exists(temp.File("done", "a.xlsx")).Should().BeTrue();
+        File.Exists(temp.File("in", "b.xlsx")).Should().BeTrue("b was not written, so it must stay for the next run");
+    }
 }

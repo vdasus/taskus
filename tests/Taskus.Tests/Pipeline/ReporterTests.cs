@@ -45,12 +45,13 @@ public class ReporterTests
     [Trait("Category", "Unit")]
     public void Save_WritesSummaryAndErrorSheets()
     {
-        using var temp = new TempFolder();
+        var fs = new System.IO.Abstractions.TestingHelpers.MockFileSystem();
 
-        var file = Reporter.Save(temp.Path, Report());
+        var file = Reporter.Save(fs, "reports", Report());
 
-        MiniExcel.GetSheetNames(file).Should().Equal("Summary", "Errors");
-        var error = MiniExcel.Query(file, useHeaderRow: true, sheetName: "Errors").Cast<IDictionary<string, object?>>().Single();
+        using var stream = new MemoryStream(fs.File.ReadAllBytes(file));
+        stream.GetSheetNames().Should().Equal("Summary", "Errors");
+        var error = stream.Query(useHeaderRow: true, sheetName: "Errors", excelType: ExcelType.XLSX).Cast<IDictionary<string, object?>>().Single();
         error["Message"].Should().Be("bad code");
     }
 }

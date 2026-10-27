@@ -16,7 +16,7 @@ public sealed class Runner(
 
     public async Task<RunReport> RunAsync(bool dryRun, CancellationToken ct)
     {
-        var report = new RunReport(task) { DryRun = dryRun };
+        var report = new RunReport(task);
         var errors = 0;
         var clock = Stopwatch.StartNew();
         log.Debug("{Task}: run started, dry run {DryRun}, onError {OnError}, maxErrors {MaxErrors}", task, dryRun, onError, maxErrors);
@@ -124,7 +124,20 @@ public sealed class Runner(
         }
 
         if (!dryRun)
-            unit.Done(report.Completed);
+        {
+            try
+            {
+                unit.Done(report.Completed);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The rows are written but the input stays: the next run reads it again. Say so loudly.
+                report.Completed = false;
+                report.Failure = $"{(report.Failure is null ? "" : report.Failure + "; ")}input not moved, the next run reads it again: {ex.Message}";
+                log.Error(ex, "{Task}: {Unit} input not moved; the next run reads it again", task, unit.Name);
+            }
+        }
+
         return stopRun;
     }
 

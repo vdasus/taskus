@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using Serilog;
 using Taskus.Config;
 using Taskus.Mapping;
@@ -10,30 +11,33 @@ namespace Taskus;
 public static class CompositionRoot
 {
     /// <param name="task">Loaded by <see cref="TaskLoader"/>, so already validated.</param>
-    public static Runner Runner(TaskOptions task, ILogger log)
+    public static Runner Runner(TaskOptions task, ILogger log, IFileSystem fs)
     {
         var taskLog = log.ForContext("Task", task.Name);
         taskLog.Debug("Source {Source}, sink {Sink}, {FieldCount} mapped fields, onError {OnError}, maxErrors {MaxErrors}, hidden fields {LogExclude}",
             task.Source.GetType().Name, task.Sink.GetType().Name, task.Map.Count, task.OnError, task.MaxErrors, task.LogExclude);
-        return new Runner(task.Name!, Source(task.Source, taskLog), RowMapper.Create(task.Map).Value, Sink(task.Sink, task.Smtp, taskLog),
+        return new Runner(task.Name!, Source(task.Source, taskLog, fs), RowMapper.Create(task.Map).Value, Sink(task.Sink, task.Smtp, taskLog, fs),
             task.OnError, task.MaxErrors, taskLog, task.LogExclude);
     }
 
-    private static ISource Source(SourceOptions options, ILogger log) => options switch
+    private static ISource Source(SourceOptions options, ILogger log, IFileSystem fs) => options switch
     {
-        ExcelSourceOptions o => new ExcelSource(o.Folder, o.Pattern, o.Sheet, o.Processed, o.Failed, log),
+        ExcelSourceOptions o => new ExcelSource(fs, o.Folder, o.Pattern, o.Sheet, o.Processed, o.Failed, log),
         PostgresSourceOptions o => new PostgresSource(o.Connection, o.Query, log),
         HttpSourceOptions o => new HttpSource(
-            new HttpEndpoint(o, "source", log, new HttpClientHandler()), o.Body is null ? null : TaskTemplate.Parse(o.Body).Value, o.Items),
+            new HttpEndpoint(o, "source", log, Handler()), o.Body is null ? null : TaskTemplate.Parse(o.Body).Value, o.Items),
         _ => throw new NotSupportedException(options.GetType().Name),
     };
 
-    private static ISink Sink(SinkOptions options, SmtpOptions? smtp, ILogger log) => options switch
+    private static ISink Sink(SinkOptions options, SmtpOptions? smtp, ILogger log, IFileSystem fs) => options switch
     {
-        ExcelSinkOptions o => new ExcelSink(o.Folder, TaskTemplate.Parse(o.File).Value, o.Overwrite, o.Sheet, log),
+        ExcelSinkOptions o => new ExcelSink(fs, o.Folder, TaskTemplate.Parse(o.File).Value, o.Overwrite, o.Sheet, log),
         PostgresSinkOptions o => new PostgresSink(o.Connection, o.Table, o.Transaction, log),
         SmtpSinkOptions o => new SmtpSink(smtp!, o.Html, log),
-        HttpSinkOptions o => new HttpSink(new HttpEndpoint(o, "sink", log, new HttpClientHandler())),
+        HttpSinkOptions o => new HttpSink(new HttpEndpoint(o, "sink", log, Handler())),
         _ => throw new NotSupportedException(options.GetType().Name),
     };
+
+    // A redirect would carry custom headers (X-Api-Key) to another host and turn a POST into a GET: report 3xx instead.
+    private static HttpClientHandler Handler() => new() { AllowAutoRedirect = false };
 }
