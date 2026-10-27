@@ -1,0 +1,44 @@
+name: Release
+
+# Push a tag like v0.2.0 to test, build and publish that version as a GitHub release.
+# The tag sets the version; 0.x and pre-release versions (v1.0.0-rc.1) are marked as pre-release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # create the GitHub release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Test
+        run: dotnet test -c Release
+      - name: Build
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          NAME=taskus-$VERSION-win-x64
+          dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:Version=$VERSION -o publish/win-x64
+          mkdir -p release/$NAME
+          cp publish/win-x64/taskus.exe publish/win-x64/appsettings.json README.md LICENSE release/$NAME/
+          cp -r examples release/$NAME/
+          cd release
+          zip -qr $NAME.zip $NAME
+          sha256sum $NAME.zip > $NAME.zip.sha256
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          case "$VERSION" in
+            0.*|*-*) PRERELEASE=--prerelease ;;
+            *) PRERELEASE= ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" release/*.zip release/*.sha256 \
+            --verify-tag $PRERELEASE --title "Taskus $VERSION" --generate-notes \
+            --notes "Windows x64 build, self-contained: unpack the zip and run taskus.exe. See README.md and Docs/design.md."

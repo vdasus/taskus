@@ -45,6 +45,19 @@ dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingl
 The result is `taskus.exe` and `appsettings.json` (logging settings); the machine that runs it needs no .NET
 installation. Logs go to `logs` next to the executable: a text file and a JSON file per run.
 
+## Release
+
+CI runs the tests on Linux and Windows for every push to `main` and every pull request. To release, push a
+version tag:
+
+```
+git tag -a v0.2.0 -m "Taskus 0.2.0"
+git push origin v0.2.0
+```
+
+The release workflow tests, builds the Windows zip with the tag's version, and publishes a GitHub release with
+the zip and its SHA-256 checksum. `0.x` versions are marked as pre-release.
+
 ## Disclaimer
 
 This software is provided "as is", without warranty of any kind. Use it at your own risk. The author accepts no
