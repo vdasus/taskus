@@ -28,6 +28,28 @@ Exit codes: `0` success, `1` the run had errors, `2` a task file is invalid.
 Example tasks are in [examples/](examples). Copy `examples/secrets.yaml.example` to `secrets.yaml` next to
 `taskus.exe` and fill in the connection strings and SMTP settings.
 
+## Templates
+
+Mapping expressions, URLs, file names and e-mail bodies in task files use [Scriban](https://scriban.github.io/),
+a template language for .NET:
+
+- [Language reference](https://scriban.github.io/docs/language): `{{ ... }}` blocks, variables, operators,
+  conditions, loops, pipes (`|`).
+- [Built-in functions](https://scriban.github.io/docs/builtins): `string.*`, `math.*`, `date.*`, `html.*` and
+  others.
+
+```yaml
+map:
+  code:    "{{ row.Code | string.strip }}"                    # source field, trimmed
+  name:    "{{ row['Client name'] }}"                         # field name with a space
+  limit:   "{{ row.Limit ?? 0 }}"                             # default for an empty value
+  subject: "Invoice {{ row.Id }}"                             # text with a value inside
+  file:    "{{ date.now | date.to_string '%Y%m%d' }}.xlsx"    # current date
+```
+
+Taskus-specific rules (which variables exist, when a value keeps its type) are in
+[Docs/design.md](Docs/design.md#mapping-and-templates).
+
 ## Download
 
 Windows builds are attached to [GitHub releases](https://github.com/vdasus/taskus/releases): unpack the zip,
