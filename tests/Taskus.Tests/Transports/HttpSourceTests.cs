@@ -10,8 +10,8 @@ namespace Taskus.Tests.Transports;
 
 public class HttpSourceTests
 {
-    private static ISource Create(FakeHandler handler, Dictionary<string, object?> settings) =>
-        HttpSource.Create(Settings.Of("source", settings), Logger.None, handler).Value;
+    private static ISource Create(FakeHandler handler, HttpSourceOptions options) =>
+        new HttpSource(new HttpEndpoint(options, "source", Logger.None, handler), options.Body is null ? null : TaskTemplate.Parse(options.Body).Value, options.Items);
 
     private static async Task<List<SourceRow>> ReadAsync(ISource source) =>
         await source.Units().Single().Rows.ToListAsync(TestContext.Current.CancellationToken);
@@ -22,7 +22,7 @@ public class HttpSourceTests
     public async Task ArrayAtItemsPath_GivesOneRowPerObject()
     {
         var handler = new FakeHandler(HttpStatusCode.OK, """{"data":{"items":[{"id":1,"name":"Ann","amount":2.5},{"id":2,"name":null}]}}""");
-        var source = Create(handler, new() { ["url"] = "http://example.com/api/clients", ["items"] = "data.items" });
+        var source = Create(handler, new() { Url = "http://example.com/api/clients", Items = "data.items" });
 
         var rows = await ReadAsync(source);
 
@@ -36,7 +36,7 @@ public class HttpSourceTests
     [Trait("Category", "Unit")]
     public async Task ArrayOfScalars_GivesValueField()
     {
-        var source = Create(new FakeHandler(HttpStatusCode.OK, "[101, 102]"), new() { ["url"] = "http://example.com/api/ids" });
+        var source = Create(new FakeHandler(HttpStatusCode.OK, "[101, 102]"), new() { Url = "http://example.com/api/ids" });
 
         var rows = await ReadAsync(source);
 
@@ -47,7 +47,7 @@ public class HttpSourceTests
     [Trait("Category", "Unit")]
     public async Task NestedObject_IsReachableFromMapping()
     {
-        var source = Create(new FakeHandler(HttpStatusCode.OK, """{"id":1,"address":{"city":"Vilnius"}}"""), new() { ["url"] = "http://example.com/api/one" });
+        var source = Create(new FakeHandler(HttpStatusCode.OK, """{"id":1,"address":{"city":"Vilnius"}}"""), new() { Url = "http://example.com/api/one" });
         var mapper = RowMapper.Create([KeyValuePair.Create("city", "{{ row.address.city }}")]).Value;
 
         var row = (await ReadAsync(source)).Single();
@@ -62,9 +62,9 @@ public class HttpSourceTests
         var handler = new FakeHandler(HttpStatusCode.OK, "[]");
         var source = Create(handler, new()
         {
-            ["url"] = "http://example.com/api/search",
-            ["method"] = "POST",
-            ["body"] = """{"from":"{{ date.now | date.to_string '%Y' }}"}""",
+            Url = "http://example.com/api/search",
+            Method = HttpMethodName.Post,
+            Body = """{"from":"{{ date.now | date.to_string '%Y' }}"}""",
         });
 
         (await ReadAsync(source)).Should().BeEmpty();
@@ -79,7 +79,7 @@ public class HttpSourceTests
     [Trait("Category", "Unit")]
     public async Task MissingItemsPath_FailsTheUnit()
     {
-        var source = Create(new FakeHandler(HttpStatusCode.OK, """{"data":[]}"""), new() { ["url"] = "http://example.com/api", ["items"] = "result" });
+        var source = Create(new FakeHandler(HttpStatusCode.OK, """{"data":[]}"""), new() { Url = "http://example.com/api", Items = "result" });
 
         var read = () => ReadAsync(source);
 
@@ -90,20 +90,10 @@ public class HttpSourceTests
     [Trait("Category", "Unit")]
     public async Task ErrorStatus_FailsTheUnit()
     {
-        var source = Create(new FakeHandler(HttpStatusCode.Unauthorized, "bad token"), new() { ["url"] = "http://example.com/api" });
+        var source = Create(new FakeHandler(HttpStatusCode.Unauthorized, "bad token"), new() { Url = "http://example.com/api" });
 
         var read = () => ReadAsync(source);
 
         await read.Should().ThrowAsync<InvalidOperationException>().WithMessage("GET http://example.com/api: HTTP 401 Unauthorized bad token");
-    }
-
-    [Fact]
-    [Trait("Category", "Unit")]
-    public void BodyWithGet_IsInvalid()
-    {
-        var result = HttpSource.Create(Settings.Of("source", new Dictionary<string, object?> { ["url"] = "http://x", ["body"] = "{}" }), Logger.None);
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Should().Contain("source.body needs method POST, PUT or PATCH");
     }
 }

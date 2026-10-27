@@ -1,8 +1,7 @@
 using Serilog;
+using System.Text.Json.Nodes;
 using Taskus.Config;
-using Taskus.Mapping;
 using Taskus.Pipeline;
-using Taskus.Transports;
 
 namespace Taskus;
 
@@ -44,12 +43,12 @@ public sealed class App(ILogger log, SecretMask? secretMask = null)
         return exit;
     }
 
-    private int Validate(string file, IReadOnlyDictionary<string, object?> secrets)
+    private int Validate(string file, JsonObject secrets)
     {
-        var job = Build(file, secrets);
-        if (job.IsFailure)
+        var task = TaskLoader.Load(file, secrets);
+        if (task.IsFailure)
         {
-            log.Error("{Error}", job.Error);
+            log.Error("{Error}", task.Error);
             return ExitCode.Invalid;
         }
 
@@ -57,17 +56,17 @@ public sealed class App(ILogger log, SecretMask? secretMask = null)
         return ExitCode.Success;
     }
 
-    private async Task<int> RunAsync(string file, IReadOnlyDictionary<string, object?> secrets, bool dryRun, CancellationToken ct)
+    private async Task<int> RunAsync(string file, JsonObject secrets, bool dryRun, CancellationToken ct)
     {
-        var job = Build(file, secrets);
-        if (job.IsFailure)
+        var loaded = TaskLoader.Load(file, secrets);
+        if (loaded.IsFailure)
         {
-            log.Error("{Error}", job.Error);
+            log.Error("{Error}", loaded.Error);
             return ExitCode.Invalid;
         }
 
-        var (task, runner) = job.Value;
-        var report = await runner.RunAsync(dryRun, ct);
+        var task = loaded.Value;
+        var report = await CompositionRoot.Runner(task, log).RunAsync(dryRun, ct);
         report.Redact(mask.Apply); // error texts can quote a URL with a secret in it; the report may go by e-mail
         log.Information("{Task}: finished, {Result}", task.Name, report.HasErrors ? "with errors" : "success");
         if (dryRun)
@@ -76,20 +75,6 @@ public sealed class App(ILogger log, SecretMask? secretMask = null)
         var sent = await Reporter.SendAsync(task, report, log, ct);
         return report.HasErrors || sent.IsFailure ? ExitCode.Errors : ExitCode.Success;
     }
-
-    private Result<(TaskDefinition Task, Runner Runner)> Build(string file, IReadOnlyDictionary<string, object?> secrets) =>
-        TaskLoader.Load(file, secrets).Bind(task =>
-        {
-            var taskLog = log.ForContext("Task", task.Name);
-            taskLog.Debug("{File}: source {SourceType}, sink {SinkType}, {FieldCount} mapped fields, onError {OnError}, maxErrors {MaxErrors}, hidden fields {LogExclude}",
-                file, task.Source.Optional("type"), task.Sink.Optional("type"), task.Map.Count, task.OnError, task.MaxErrors, task.LogExclude);
-            var mapper = RowMapper.Create(task.Map);
-            var source = Transport.Source(task.Source, taskLog);
-            var sink = Transport.Sink(task.Sink, task.Smtp, taskLog);
-            return Result.Combine("; ", mapper, source, sink)
-                .MapError(error => $"{file}: {error}")
-                .Map(() => (task, new Runner(task.Name, source.Value, mapper.Value, sink.Value, task.OnError, task.MaxErrors, taskLog, task.LogExclude)));
-        });
 
     private static Result<IReadOnlyList<string>> TaskFiles(string path)
     {

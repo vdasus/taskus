@@ -8,15 +8,15 @@ public sealed class RowMapper
     private RowMapper(IReadOnlyList<(string Field, TaskTemplate Template)> fields) => this.fields = fields;
 
     /// <summary>An empty map passes source rows through unchanged.</summary>
-    public static Result<RowMapper> Create(IReadOnlyList<KeyValuePair<string, string>> map)
+    public static Result<RowMapper> Create(IEnumerable<KeyValuePair<string, string>> map)
     {
         var fields = new List<(string, TaskTemplate)>();
         var errors = new List<string>();
         foreach (var (field, text) in map)
         {
-            TaskTemplate.Parse($"map.{field}", text)
+            TaskTemplate.Parse(text)
                 .Tap(t => fields.Add((field, t)))
-                .TapError(errors.Add);
+                .TapError(error => errors.Add($"map.{field}: {error}"));
         }
 
         return errors.Count == 0 ? new RowMapper(fields) : Result.Failure<RowMapper>(string.Join("; ", errors));

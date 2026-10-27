@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using Taskus.Config;
 
@@ -17,6 +18,7 @@ public class TaskLoaderTests
           type: postgres
           connection: ${secret:pg}
           table: public.clients
+          transaction: all
         onError: continue
         maxErrors: 5
         report:
@@ -24,33 +26,39 @@ public class TaskLoaderTests
           mailTo: me@example.com
           when: always
         smtp: ${secret:smtp}
+        logExclude: [email]
         """;
 
-    private static readonly Dictionary<string, object?> SecretValues = new()
+    private static readonly JsonObject SecretValues = new()
     {
         ["pg"] = "Host=db",
-        ["smtp"] = new Dictionary<object, object?> { ["server"] = "mail.local", ["from"] = "t@example.com" },
+        ["smtp"] = new JsonObject { ["server"] = "mail.local", ["port"] = "25", ["from"] = "t@example.com" },
     };
+
+    private static Result<TaskOptions> Load(string yaml, JsonObject? secrets = null)
+    {
+        using var temp = new TempFolder();
+        return TaskLoader.Load(temp.Write("t.yaml", yaml), secrets ?? Secrets.None);
+    }
 
     [Fact]
     [Trait("Category", "Unit")]
     [Trait("Priority", "High")]
     public void Load_FullTask_ReadsEverySection()
     {
-        using var temp = new TempFolder();
-
-        var result = TaskLoader.Load(temp.Write("t.yaml", FullTask), SecretValues);
+        var result = Load(FullTask, SecretValues);
 
         result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error : "");
         var task = result.Value;
         task.Name.Should().Be("import-clients");
-        task.Source.Required("folder").Value.Should().Be(@"C:\in");
-        task.Sink.Required("connection").Value.Should().Be("Host=db");
-        task.Map.Select(kv => kv.Key).Should().Equal("code", "name");
+        task.Source.Should().Be(new ExcelSourceOptions { Folder = @"C:\in" });
+        task.Sink.Should().Be(new PostgresSinkOptions { Connection = "Host=db", Table = "public.clients", Transaction = TransactionScope.All });
+        task.Map.Should().Equal(new Dictionary<string, string> { ["code"] = "{{ row.Code }}", ["name"] = "{{ row.Name }}" });
         task.OnError.Should().Be(ErrorPolicy.Continue);
         task.MaxErrors.Should().Be(5);
-        task.Report.Should().Be(new ReportOptions(@"C:\reports", "me@example.com", ReportWhen.Always));
-        task.Smtp!.Required("server").Value.Should().Be("mail.local");
+        task.Report.Should().Be(new ReportOptions { Folder = @"C:\reports", MailTo = "me@example.com", When = ReportWhen.Always });
+        task.Smtp.Should().Be(new SmtpOptions { Server = "mail.local", Port = 25, From = "t@example.com" });
+        task.LogExclude.Should().Equal("email");
     }
 
     [Fact]
@@ -66,35 +74,65 @@ public class TaskLoaderTests
         task.OnError.Should().Be(ErrorPolicy.Stop);
         task.MaxErrors.Should().Be(100);
         task.Map.Should().BeEmpty();
-        task.Report.Should().Be(ReportOptions.Default);
+        task.Report.Should().Be(new ReportOptions());
+        task.Source.As<ExcelSourceOptions>().Pattern.Should().Be("*.xlsx");
     }
 
     [Fact]
     [Trait("Category", "Unit")]
-    public void Load_InvalidValues_ReportsEveryProblem()
+    public void Load_HttpSource_ReadsMethodCaseInsensitivelyAndNumbersFromText()
     {
-        using var temp = new TempFolder();
-        var file = temp.Write("bad.yaml", "source: { type: excel }\nonError: maybe\nmaxErrors: many\n");
+        var result = Load("""
+            source: { type: HTTP, method: post, url: "http://x/api", body: "{}", timeout: 2.5, retry: { attempts: 1 } }
+            sink: { type: excel, folder: y, file: z.xlsx }
+            """);
 
-        var result = TaskLoader.Load(file, Secrets.None);
+        result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error : "");
+        var source = result.Value.Source.As<HttpSourceOptions>();
+        source.Method.Should().Be(HttpMethodName.Post);
+        source.Timeout.Should().Be(2.5);
+        source.Retry.Should().Be(new RetryOptions { Attempts = 1, Delay = 1 });
+    }
+
+    [Theory]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    [InlineData("source: { type: excel, folder: x, procesed: y }\nsink: { type: excel, folder: y, file: z }\n", "source.procesed: unknown setting")]
+    [InlineData("source: { type: excel, folder: x }\nsink: { type: excel, folder: y }\n", "sink: missing required setting 'file'")]
+    [InlineData("source: { type: ftp }\nsink: { type: excel, folder: y, file: z }\n", "source.type: unknown type 'ftp' (excel | postgres | http)")]
+    [InlineData("source: { folder: x }\nsink: { type: excel, folder: y, file: z }\n", "source.type: is required")]
+    [InlineData("source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z }\nmaxErrors: many\n", "maxErrors: must be a whole number")]
+    [InlineData("source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z }\nonError: maybe\n", "onError: must be stop | continue")]
+    [InlineData("source: { type: excel, folder: x }\n", "missing required setting 'sink'")]
+    [InlineData("source: { type: excel, folder: x }\nsink: { type: http, method: TRACE, url: http://x }\n", "sink.method: must be GET | POST | PUT | PATCH | DELETE")]
+    [InlineData("- a\n- b\n", "must be a mapping")]
+    public void Load_BadFile_ExplainsTheProblem(string yaml, string error)
+    {
+        var result = Load(yaml);
 
         result.IsFailure.Should().BeTrue();
-        result.Error.Should().Contain("sink is required")
-            .And.Contain("onError 'maybe' must be one of: stop | continue")
-            .And.Contain("maxErrors 'many' is not a whole number");
+        result.Error.Should().Contain(error);
     }
 
     [Fact]
     [Trait("Category", "Unit")]
-    public void Load_MailToWithoutSmtp_Fails()
+    public void Load_InvalidValues_ReportsEveryRule()
     {
-        using var temp = new TempFolder();
-        var file = temp.Write("t.yaml", "source: { type: excel, folder: x }\nsink: { type: excel }\nreport: { mailTo: a@b.c }\n");
-
-        var result = TaskLoader.Load(file, Secrets.None);
+        var result = Load("""
+            source: { type: http, method: GET, url: "{{ 1 + }}", body: "{}", timeout: 0 }
+            sink: { type: smtp }
+            maxErrors: -1
+            report: { mailTo: not-an-address }
+            """);
 
         result.IsFailure.Should().BeTrue();
-        result.Error.Should().Contain("report.mailTo needs an smtp section");
+        result.Error.Should().Contain("source.url: ")
+            .And.Contain("source.timeout: must be positive")
+            .And.Contain("source.body: needs method POST, PUT or PATCH")
+            .And.Contain("maxErrors: must not be negative")
+            .And.Contain("smtp: is required by the smtp sink")
+            .And.Contain("smtp: is required by report.mailTo")
+            .And.Contain("report.mailTo: must be e-mail addresses");
     }
 
     [Fact]

@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <PackageReference Include="CSharpFunctionalExtensions" />
+    <PackageReference Include="FluentValidation" />
     <PackageReference Include="MailKit" />
     <PackageReference Include="MiniExcel" />
     <PackageReference Include="Npgsql" />

@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using FluentAssertions;
 
 namespace Taskus.Tests;
@@ -7,11 +8,11 @@ public class SecretMaskTests
     private static SecretMask Mask()
     {
         var mask = new SecretMask();
-        mask.Add(new Dictionary<string, object?>
+        mask.Add(new JsonObject
         {
             ["pg_main"] = "Host=db;Username=taskus;Password=pg-pass-1",
             ["api_token"] = "tok-123456",
-            ["smtp_main"] = new Dictionary<object, object?>
+            ["smtp_main"] = new JsonObject
             {
                 ["server"] = "smtp.example.com",
                 ["port"] = "587",

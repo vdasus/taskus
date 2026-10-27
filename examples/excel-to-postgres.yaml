@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
 # Imports every .xlsx from the input folder into a PostgreSQL table.
 name: import-clients
 source:

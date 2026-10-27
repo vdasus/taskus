@@ -19,8 +19,6 @@ namespace Taskus.Transports;
 /// </summary>
 public sealed class HttpEndpoint
 {
-    private static readonly string[] Methods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
-    private static readonly string[] MethodsWithBody = ["POST", "PUT", "PATCH"];
     private static readonly TimeSpan MaxRetryAfter = TimeSpan.FromSeconds(60);
     private const int ErrorBodyLength = 300;
 
@@ -32,49 +30,28 @@ public sealed class HttpEndpoint
     private readonly string path;
     private readonly ILogger log;
 
-    private HttpEndpoint(HttpClient client, HttpMethod method, TaskTemplate url, IReadOnlyList<KeyValuePair<string, string>> headers,
-        ResiliencePipeline<HttpResponseMessage> pipeline, Throttle? throttle, string path, ILogger log)
+    /// <param name="options">Already checked by <see cref="TaskValidation"/>.</param>
+    /// <param name="path">Task file section for messages: <c>source</c> or <c>sink</c>.</param>
+    public HttpEndpoint(IHttpEndpointOptions options, string path, ILogger log, HttpMessageHandler handler)
     {
-        this.log = log;
-        this.client = client;
-        Method = method;
-        this.url = url;
-        this.headers = headers;
-        this.pipeline = pipeline;
-        this.throttle = throttle;
+        // Header names only: values carry tokens.
+        log.Debug("{Path}: {Method} {Url}, timeout {Timeout} s, retry {Retry}, rate limit {RateLimit}/s, headers {Headers}",
+            path, options.Method, options.Url, options.Timeout, options.Retry, options.RateLimit, options.Headers.Keys);
+        Method = new HttpMethod(options.Method.ToString().ToUpperInvariant());
+        client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(options.Timeout) };
+        url = TaskTemplate.Parse(options.Url).Value;
+        headers = [.. options.Headers];
+        pipeline = options.Retry is { Attempts: > 0 } retry
+            ? new ResiliencePipelineBuilder<HttpResponseMessage>().AddRetry(RetryStrategy(retry, Method, log)).Build()
+            : ResiliencePipeline<HttpResponseMessage>.Empty;
+        throttle = options.RateLimit > 0 ? new Throttle(options.RateLimit, TimeProvider.System) : null;
         this.path = path;
+        this.log = log;
     }
 
     public HttpMethod Method { get; }
 
-    public bool SendsBody => MethodsWithBody.Contains(Method.Method);
-
-    public static Result<HttpEndpoint> Create(Settings settings, string defaultMethod, ILogger log, HttpMessageHandler handler)
-    {
-        var method = Result.Success((settings.Optional("method") ?? defaultMethod).ToUpperInvariant())
-            .Ensure(m => Methods.Contains(m), m => $"{settings.Path}.method '{m}' must be one of: {string.Join(" | ", Methods)}");
-        var url = settings.Required("url").Bind(text => TaskTemplate.Parse($"{settings.Path}.url", text));
-        var headers = settings.StringMap("headers");
-        var timeout = settings.Double("timeout", 100).Ensure(t => t > 0, $"{settings.Path}.timeout must be positive");
-        var rateLimit = settings.Double("rateLimit", 0).Ensure(r => r >= 0, $"{settings.Path}.rateLimit must not be negative");
-        var retry = settings.OptionalSection("retry").Bind(ReadRetry);
-
-        return Result.Combine("; ", method, url, headers, timeout, rateLimit, retry).Map(() =>
-        {
-            // Header names only: values carry tokens.
-            log.Debug("{Path}: {Method} {Url}, timeout {Timeout} s, retry {Retry}, rate limit {RateLimit}/s, headers {Headers}",
-                settings.Path, method.Value, settings.Optional("url"), timeout.Value, retry.Value, rateLimit.Value, headers.Value.Select(h => h.Key));
-            var httpMethod = new HttpMethod(method.Value);
-            var pipeline = retry.Value is { Attempts: > 0 } r
-                ? new ResiliencePipelineBuilder<HttpResponseMessage>().AddRetry(RetryOptions(r, httpMethod, log)).Build()
-                : ResiliencePipeline<HttpResponseMessage>.Empty;
-            return new HttpEndpoint(
-                new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(timeout.Value) },
-                httpMethod, url.Value, headers.Value, pipeline,
-                rateLimit.Value > 0 ? new Throttle(rateLimit.Value, TimeProvider.System) : null,
-                settings.Path, log);
-        });
-    }
+    public bool SendsBody => Method == HttpMethod.Post || Method == HttpMethod.Put || Method == HttpMethod.Patch;
 
     /// <summary>Renders <c>url</c> with the given variables and checks it is an absolute http(s) URL.</summary>
     public Result<string> Url(IReadOnlyDictionary<string, object?> variables) =>
@@ -141,20 +118,8 @@ public sealed class HttpEndpoint
         return request;
     }
 
-    private sealed record RetrySettings(int Attempts, double Delay);
-
-    private static Result<RetrySettings?> ReadRetry(Settings? retry)
-    {
-        if (retry is null)
-            return Result.Success<RetrySettings?>(null);
-
-        var attempts = retry.Int("attempts", 3).Ensure(a => a >= 0, $"{retry.Path}.attempts must not be negative");
-        var delay = retry.Double("delay", 1).Ensure(d => d >= 0, $"{retry.Path}.delay must not be negative");
-        return Result.Combine("; ", attempts, delay).Map(() => (RetrySettings?)new RetrySettings(attempts.Value, delay.Value));
-    }
-
     // Retries network errors, time-outs, 408, 429 and 5xx. Other 4xx mean the request itself is wrong.
-    private static RetryStrategyOptions<HttpResponseMessage> RetryOptions(RetrySettings retry, HttpMethod method, ILogger log) => new()
+    private static RetryStrategyOptions<HttpResponseMessage> RetryStrategy(RetryOptions retry, HttpMethod method, ILogger log) => new()
     {
         MaxRetryAttempts = retry.Attempts,
         Delay = TimeSpan.FromSeconds(retry.Delay),
@@ -205,11 +170,6 @@ internal sealed class Throttle(double perSecond, TimeProvider time)
 /// </summary>
 public sealed class HttpSink(HttpEndpoint endpoint) : ISink
 {
-    public static Result<ISink> Create(Settings settings, ILogger log) => Create(settings, log, new HttpClientHandler());
-
-    internal static Result<ISink> Create(Settings settings, ILogger log, HttpMessageHandler handler) =>
-        HttpEndpoint.Create(settings, "POST", log, handler).Map(endpoint => (ISink)new HttpSink(endpoint));
-
     public Task<Result<ISinkSession>> OpenAsync(string unit, CancellationToken ct) =>
         Task.FromResult(Result.Success<ISinkSession>(new Session(endpoint)));
 
@@ -242,19 +202,6 @@ public sealed class HttpSink(HttpEndpoint endpoint) : ISink
 /// </summary>
 public sealed class HttpSource(HttpEndpoint endpoint, TaskTemplate? body, string? items) : ISource
 {
-    public static Result<ISource> Create(Settings settings, ILogger log) => Create(settings, log, new HttpClientHandler());
-
-    internal static Result<ISource> Create(Settings settings, ILogger log, HttpMessageHandler handler)
-    {
-        var endpoint = HttpEndpoint.Create(settings, "GET", log, handler);
-        var body = settings.Optional("body") is { } text
-            ? TaskTemplate.Parse($"{settings.Path}.body", text).Map(t => (TaskTemplate?)t)
-            : Result.Success<TaskTemplate?>(null);
-        return Result.Combine("; ", endpoint, body)
-            .Ensure(() => body.Value is null || endpoint.Value.SendsBody, $"{settings.Path}.body needs method POST, PUT or PATCH")
-            .Map(() => (ISource)new HttpSource(endpoint.Value, body.Value, settings.Optional("items")));
-    }
-
     public IEnumerable<SourceUnit> Units()
     {
         yield return new SourceUnit("response", ReadAsync(), _ => { });

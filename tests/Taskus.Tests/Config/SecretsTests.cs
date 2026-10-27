@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using AutoFixture;
 using FluentAssertions;
 using Taskus.Config;
@@ -12,14 +13,13 @@ public class SecretsTests
     [Trait("Category", "Unit")]
     public void Resolve_WholeValueReference_TakesSecretAsIs()
     {
-        var smtp = new Dictionary<object, object?> { ["server"] = "mail.local" };
-        var secrets = new Dictionary<string, object?> { ["smtp_main"] = smtp };
-        var tree = new Dictionary<object, object?> { ["smtp"] = "${secret:smtp_main}" };
+        var secrets = new JsonObject { ["smtp_main"] = new JsonObject { ["server"] = "mail.local" } };
+        var tree = new JsonObject { ["smtp"] = "${secret:smtp_main}" };
 
         var result = Secrets.Resolve(tree, secrets);
 
         result.IsSuccess.Should().BeTrue();
-        ((IDictionary<object, object?>)result.Value!)["smtp"].Should().BeSameAs(smtp);
+        result.Value!["smtp"]!["server"]!.GetValue<string>().Should().Be("mail.local");
     }
 
     [Fact]
@@ -27,16 +27,15 @@ public class SecretsTests
     public void Resolve_ReferenceInsideText_ReplacesItInNestedValues()
     {
         var password = fixture.Create<string>();
-        var secrets = new Dictionary<string, object?> { ["pg"] = password };
-        var tree = new Dictionary<object, object?>
+        var secrets = new JsonObject { ["pg"] = password };
+        var tree = new JsonObject
         {
-            ["sink"] = new Dictionary<object, object?> { ["connection"] = "Host=db;Password=${secret:pg};" },
+            ["sink"] = new JsonObject { ["connection"] = "Host=db;Password=${secret:pg};" },
         };
 
         var result = Secrets.Resolve(tree, secrets);
 
-        var sink = (IDictionary<object, object?>)((IDictionary<object, object?>)result.Value!)["sink"]!;
-        sink["connection"].Should().Be($"Host=db;Password={password};");
+        result.Value!["sink"]!["connection"]!.GetValue<string>().Should().Be($"Host=db;Password={password};");
     }
 
     [Fact]
@@ -53,7 +52,7 @@ public class SecretsTests
     [Trait("Category", "Unit")]
     public void Resolve_MappingSecretInsideText_Fails()
     {
-        var secrets = new Dictionary<string, object?> { ["smtp"] = new Dictionary<object, object?>() };
+        var secrets = new JsonObject { ["smtp"] = new JsonObject() };
 
         var result = Secrets.Resolve("server=${secret:smtp}", secrets);
 
@@ -71,8 +70,8 @@ public class SecretsTests
         var result = Secrets.Load(file);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value["pg_main"].Should().Be("Host=db");
-        result.Value["smtp_main"].Should().BeAssignableTo<IDictionary<object, object?>>();
+        result.Value["pg_main"]!.GetValue<string>().Should().Be("Host=db");
+        result.Value["smtp_main"]!["server"]!.GetValue<string>().Should().Be("mail.local");
     }
 
     [Fact]

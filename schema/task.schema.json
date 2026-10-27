@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json",
+  "title": "Taskus task",
+  "description": "A Taskus task: read rows from a source, map each row, write it to a sink.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Task name for logs and report file names. Default: the task file name.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source": {
+      "description": "Where rows come from.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "anyOf": [
+        {
+          "description": "Every .xlsx file matching pattern in folder is one unit. The first sheet row holds the field names.",
+          "properties": {
+            "type": {
+              "const": "excel"
+            },
+            "folder": {
+              "description": "Input folder.",
+              "type": "string"
+            },
+            "pattern": {
+              "description": "File name pattern. Default *.xlsx.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "Sheet name. Default: the first sheet.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "processed": {
+              "description": "Folder for files the sink completed.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "failed": {
+              "description": "Folder for files that stopped or were rolled back.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "folder"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "The result of query is one unit.",
+          "properties": {
+            "type": {
+              "const": "postgres"
+            },
+            "connection": {
+              "description": "Npgsql connection string. Usually ${secret:name}.",
+              "type": "string"
+            },
+            "query": {
+              "description": "SQL query; each result row is one row.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connection",
+            "query"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Reads rows from one JSON response.",
+          "properties": {
+            "type": {
+              "const": "http"
+            },
+            "method": {
+              "description": "GET (default) | POST | PUT | PATCH | DELETE.",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            },
+            "url": {
+              "description": "Absolute http(s) URL; a Scriban template without row.",
+              "type": "string"
+            },
+            "body": {
+              "description": "Request body template, sent as JSON. Needs POST, PUT or PATCH.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "items": {
+              "description": "Dotted path to the array of rows in the response. Default: the response root.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "headers": {
+              "description": "Request headers. Content-Type replaces the default.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "timeout": {
+              "description": "Seconds per attempt. Default 100.",
+              "type": "number"
+            },
+            "retry": {
+              "description": "Retry network errors, time-outs, 408, 429 and 5xx. Omit for no retries.",
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "attempts": {
+                  "description": "Extra attempts after the first call. Default 3.",
+                  "type": "integer"
+                },
+                "delay": {
+                  "description": "Seconds before the first retry, doubled for each next one (with jitter). Default 1.",
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "rateLimit": {
+              "description": "Requests per second. 0 (default): no limit.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "map": {
+      "description": "Target field name to Scriban template over 'row'. A single {{ expression }} keeps its type. Empty: rows pass through unchanged.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "sink": {
+      "description": "Where mapped rows go.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "anyOf": [
+        {
+          "description": "Writes each unit to one .xlsx file.",
+          "properties": {
+            "type": {
+              "const": "excel"
+            },
+            "folder": {
+              "description": "Output folder.",
+              "type": "string"
+            },
+            "file": {
+              "description": "File name template; 'unit' is the input file name without extension.",
+              "type": "string"
+            },
+            "overwrite": {
+              "description": "Replace an existing file. Default false: the unit fails instead.",
+              "type": "boolean"
+            },
+            "sheet": {
+              "description": "Sheet name. Default Sheet1.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "folder",
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Inserts rows into a table; columns are the mapped field names.",
+          "properties": {
+            "type": {
+              "const": "postgres"
+            },
+            "connection": {
+              "description": "Npgsql connection string. Usually ${secret:name}.",
+              "type": "string"
+            },
+            "table": {
+              "description": "Table name, optionally schema.table.",
+              "type": "string"
+            },
+            "transaction": {
+              "description": "perRow (default): commit each row. all: one transaction per unit, rolled back on the first error.",
+              "enum": [
+                "perRow",
+                "all"
+              ]
+            }
+          },
+          "required": [
+            "connection",
+            "table"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Sends one e-mail per row; mapped fields: to, subject, body, cc. Needs the smtp section.",
+          "properties": {
+            "type": {
+              "const": "smtp"
+            },
+            "html": {
+              "description": "Send the body as HTML. Default false.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Calls an HTTP API once per row. POST, PUT and PATCH send the mapped row as JSON.",
+          "properties": {
+            "type": {
+              "const": "http"
+            },
+            "method": {
+              "description": "GET | POST (default) | PUT | PATCH | DELETE.",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            },
+            "url": {
+              "description": "Absolute http(s) URL; a Scriban template over the mapped row.",
+              "type": "string"
+            },
+            "headers": {
+              "description": "Request headers. Content-Type replaces the default application/json.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "timeout": {
+              "description": "Seconds per attempt. Default 100.",
+              "type": "number"
+            },
+            "retry": {
+              "description": "Retry network errors, time-outs, 408, 429 and 5xx. Omit for no retries.",
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "attempts": {
+                  "description": "Extra attempts after the first call. Default 3.",
+                  "type": "integer"
+                },
+                "delay": {
+                  "description": "Seconds before the first retry, doubled for each next one (with jitter). Default 1.",
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "rateLimit": {
+              "description": "Requests per second. 0 (default): no limit.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "onError": {
+      "description": "stop (default): end the run at the first failed row. continue: skip failed rows and report them.",
+      "enum": [
+        "stop",
+        "continue"
+      ]
+    },
+    "maxErrors": {
+      "description": "Stop a continue run after this many errors over all units. 0: no limit. Default 100.",
+      "type": "integer"
+    },
+    "report": {
+      "description": "Run report: saved as .xlsx and/or mailed.",
+      "type": "object",
+      "properties": {
+        "folder": {
+          "description": "Folder for the report .xlsx file.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mailTo": {
+          "description": "Report e-mail recipients, separated by , or ;. Needs the smtp section.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "when": {
+          "description": "always | onError (default) | never.",
+          "enum": [
+            "always",
+            "onError",
+            "never"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "smtp": {
+      "description": "SMTP server for the smtp sink and the report mail. Usually ${secret:name}.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "server": {
+          "description": "SMTP server host name.",
+          "type": "string"
+        },
+        "port": {
+          "description": "SMTP port. Default 587.",
+          "type": "integer"
+        },
+        "user": {
+          "description": "User name; omit for an anonymous server.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "password": {
+          "description": "Password. Keep it in secrets.yaml.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "description": "Sender address.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "from"
+      ],
+      "additionalProperties": false
+    },
+    "logExclude": {
+      "description": "Row fields whose values are logged as *** (trace and dry-run logs).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "source",
+    "sink"
+  ],
+  "additionalProperties": false
+}

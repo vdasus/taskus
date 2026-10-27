@@ -9,15 +9,6 @@ namespace Taskus.Transports;
 /// <summary>Every file matching <c>pattern</c> in <c>folder</c> is one unit. The first sheet row holds the field names.</summary>
 public sealed class ExcelSource(string folder, string pattern, string? sheet, string? processed, string? failed, ILogger log) : ISource
 {
-    public static Result<ISource> Create(Settings settings, ILogger log) =>
-        settings.Required("folder").Map(folder => (ISource)new ExcelSource(
-            folder,
-            settings.Optional("pattern") ?? "*.xlsx",
-            settings.Optional("sheet"),
-            settings.Optional("processed"),
-            settings.Optional("failed"),
-            log));
-
     public IEnumerable<SourceUnit> Units()
     {
         var files = Directory.EnumerateFiles(folder, pattern)
@@ -66,15 +57,6 @@ public sealed class ExcelSource(string folder, string pattern, string? sheet, st
 /// <summary>Writes each unit to one .xlsx file. <c>file</c> is a template; <c>unit</c> is the source unit name.</summary>
 public sealed class ExcelSink(string folder, TaskTemplate file, bool overwrite, string sheet, ILogger log) : ISink
 {
-    public static Result<ISink> Create(Settings settings, ILogger log)
-    {
-        var folder = settings.Required("folder");
-        var file = settings.Required("file").Bind(text => TaskTemplate.Parse($"{settings.Path}.file", text));
-        var overwrite = settings.Bool("overwrite", false);
-        return Result.Combine("; ", folder, file, overwrite)
-            .Map(() => (ISink)new ExcelSink(folder.Value, file.Value, overwrite.Value, settings.Optional("sheet") ?? "Sheet1", log));
-    }
-
     public Task<Result<ISinkSession>> OpenAsync(string unit, CancellationToken ct)
     {
         var variables = new Dictionary<string, object?> { ["unit"] = Path.GetFileNameWithoutExtension(unit) };

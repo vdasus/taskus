@@ -7,29 +7,18 @@ using Taskus.Pipeline;
 
 namespace Taskus.Transports;
 
-public sealed record SmtpOptions(string Server, int Port, string? User, string? Password, string From)
+/// <summary>Connects to the server and builds messages from <see cref="SmtpOptions"/>.</summary>
+public static class Mail
 {
-    public static Result<SmtpOptions> Create(Settings settings)
-    {
-        var server = settings.Required("server");
-        var port = settings.Int("port", 587);
-        var from = settings.Required("from");
-        return Result.Combine("; ", server, port, from)
-            .Map(() => new SmtpOptions(server.Value, port.Value, settings.Optional("user"), settings.Optional("password"), from.Value));
-    }
-
-    // The generated record ToString() would print Password.
-    public override string ToString() => $"{Server}:{Port} as {User ?? "(anonymous)"}, from {From}";
-
-    public async Task<SmtpClient> ConnectAsync(ILogger log, CancellationToken ct)
+    public static async Task<SmtpClient> ConnectAsync(this SmtpOptions options, ILogger log, CancellationToken ct)
     {
         var client = new SmtpClient();
         try
         {
-            await client.ConnectAsync(Server, Port, SecureSocketOptions.Auto, ct);
-            if (User is not null)
-                await client.AuthenticateAsync(User, Password ?? "", ct);
-            log.Debug("Connected to {Server}:{Port}, authenticated as {User}", Server, Port, User ?? "(anonymous)");
+            await client.ConnectAsync(options.Server, options.Port, SecureSocketOptions.Auto, ct);
+            if (options.User is not null)
+                await client.AuthenticateAsync(options.User, options.Password ?? "", ct);
+            log.Debug("Connected to {Server}:{Port}, authenticated as {User}", options.Server, options.Port, options.User ?? "(anonymous)");
             return client;
         }
         catch
@@ -39,10 +28,10 @@ public sealed record SmtpOptions(string Server, int Port, string? User, string? 
         }
     }
 
-    public MimeMessage Message(string to, string subject, string? cc = null)
+    public static MimeMessage Message(this SmtpOptions options, string to, string subject, string? cc = null)
     {
         var message = new MimeMessage { Subject = subject };
-        message.From.Add(MailboxAddress.Parse(From));
+        message.From.Add(MailboxAddress.Parse(options.From));
         message.To.AddRange(InternetAddressList.Parse(to.Replace(';', ',')));
         if (!string.IsNullOrWhiteSpace(cc))
             message.Cc.AddRange(InternetAddressList.Parse(cc.Replace(';', ',')));
@@ -53,13 +42,6 @@ public sealed record SmtpOptions(string Server, int Port, string? User, string? 
 /// <summary>Sends one e-mail per row. Fields: <c>to</c>, <c>subject</c>, <c>body</c>, optional <c>cc</c>.</summary>
 public sealed class SmtpSink(SmtpOptions options, bool html, ILogger log) : ISink
 {
-    public static Result<ISink> Create(Settings settings, Settings? smtp, ILogger log)
-    {
-        var html = settings.Bool("html", false);
-        var options = smtp is null ? Result.Failure<SmtpOptions>("an smtp sink needs an smtp section") : SmtpOptions.Create(smtp);
-        return Result.Combine("; ", html, options).Map(() => (ISink)new SmtpSink(options.Value, html.Value, log));
-    }
-
     public async Task<Result<ISinkSession>> OpenAsync(string unit, CancellationToken ct)
     {
         try

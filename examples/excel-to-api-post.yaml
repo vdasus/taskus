@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
 # For every Id in the .xlsx files of the input folder, calls
 #   POST http://example.com/api   with body {"id": <Id>}
 # Sample input: examples/ids.xlsx (one column, Id).

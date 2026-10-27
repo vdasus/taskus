@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Serilog.Core;
 using Serilog.Events;
 
@@ -21,7 +22,7 @@ public sealed class SecretMask : ILogEventEnricher
 
     private volatile string[] values = [];
 
-    public void Add(IReadOnlyDictionary<string, object?> secrets)
+    public void Add(JsonObject secrets)
     {
         var found = new HashSet<string>(values, StringComparer.Ordinal);
         foreach (var (name, value) in secrets)
@@ -57,11 +58,11 @@ public sealed class SecretMask : ILogEventEnricher
         _ => value,
     };
 
-    private static void Collect(string? key, object? node, bool topLevel, HashSet<string> found)
+    private static void Collect(string? key, JsonNode? node, bool topLevel, HashSet<string> found)
     {
         switch (node)
         {
-            case string text:
+            case JsonValue value when value.TryGetValue<string>(out var text):
                 if (topLevel || IsSensitive(key))
                     AddValue(text, found);
                 foreach (var part in text.Split(';'))
@@ -72,11 +73,11 @@ public sealed class SecretMask : ILogEventEnricher
                 }
 
                 break;
-            case IDictionary<object, object?> map:
+            case JsonObject map:
                 foreach (var (k, v) in map)
-                    Collect(k.ToString(), v, topLevel: false, found);
+                    Collect(k, v, topLevel: false, found);
                 break;
-            case IList<object?> list:
+            case JsonArray list:
                 foreach (var item in list)
                     Collect(key, item, topLevel: false, found);
                 break;

@@ -10,13 +10,6 @@ namespace Taskus.Transports;
 /// <summary>The result of <c>query</c> is one unit.</summary>
 public sealed class PostgresSource(string connection, string query, ILogger log) : ISource
 {
-    public static Result<ISource> Create(Settings settings, ILogger log)
-    {
-        var connection = settings.Required("connection");
-        var query = settings.Required("query");
-        return Result.Combine("; ", connection, query).Map(() => (ISource)new PostgresSource(connection.Value, query.Value, log));
-    }
-
     public IEnumerable<SourceUnit> Units()
     {
         yield return new SourceUnit("query", ReadAsync(), _ => { });
@@ -43,20 +36,9 @@ public sealed class PostgresSource(string connection, string query, ILogger log)
     }
 }
 
-public enum TransactionScope { PerRow, All }
-
 /// <summary>Inserts rows into <c>table</c>. Columns are the mapped field names; values convert to the column types.</summary>
 public sealed class PostgresSink(string connection, string table, TransactionScope transaction, ILogger log) : ISink
 {
-    public static Result<ISink> Create(Settings settings, ILogger log)
-    {
-        var connection = settings.Required("connection");
-        var table = settings.Required("table");
-        var transaction = settings.Enum("transaction", TransactionScope.PerRow);
-        return Result.Combine("; ", connection, table, transaction)
-            .Map(() => (ISink)new PostgresSink(connection.Value, table.Value, transaction.Value, log));
-    }
-
     public async Task<Result<ISinkSession>> OpenAsync(string unit, CancellationToken ct)
     {
         var db = new NpgsqlConnection(connection);

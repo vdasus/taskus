@@ -95,7 +95,7 @@ public class LoggingTests
     {
         using var temp = new TempFolder();
         var mask = new SecretMask();
-        mask.Add(new Dictionary<string, object?> { ["api_token"] = "s3cr3t-t0ken" });
+        mask.Add(new System.Text.Json.Nodes.JsonObject { ["api_token"] = "s3cr3t-t0ken" });
 
         using (var log = Logging.Create(ShippedSettings, temp.Path, Started, mask))
             log.Warning("{Url}: failed", "http://example.com/api?key=s3cr3t-t0ken");

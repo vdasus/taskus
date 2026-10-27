@@ -15,7 +15,7 @@ public static class Reporter
     public static bool ShouldReport(ReportWhen when, RunReport report) =>
         when == ReportWhen.Always || (when == ReportWhen.OnError && report.HasErrors);
 
-    public static async Task<Result> SendAsync(TaskDefinition task, RunReport report, ILogger log, CancellationToken ct)
+    public static async Task<Result> SendAsync(TaskOptions task, RunReport report, ILogger log, CancellationToken ct)
     {
         if (!ShouldReport(task.Report.When, report))
         {
@@ -34,10 +34,7 @@ public static class Reporter
 
             if (task.Report.MailTo is { } to && task.Smtp is { } smtp)
             {
-                var options = SmtpOptions.Create(smtp);
-                if (options.IsFailure)
-                    return options;
-                await MailAsync(options.Value, to, report, file, log, ct);
+                await MailAsync(smtp, to, report, file, log, ct);
                 log.Information("{Task}: report mailed to {To}", task.Name, to);
             }
 

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
 # Exports a query result to a new Excel file on every run.
 name: export-invoices
 source:

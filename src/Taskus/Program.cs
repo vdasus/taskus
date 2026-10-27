@@ -2,6 +2,7 @@ using Optionus;
 using Serilog;
 using Serilog.Events;
 using Taskus;
+using Taskus.Config;
 
 var dryRun = false;
 var help = false;
@@ -12,7 +13,9 @@ LogEventLevel? logLevel = null;
 var options = new OptionSet
 {
     "Usage: taskus run|validate PATH [OPTIONS]",
+    "       taskus schema",
     "PATH is a task file or a folder of task files (*.yaml, *.yml).",
+    "schema prints the JSON Schema of task files.",
     "",
     "Documentation, task file reference and examples:",
     "  https://github.com/vdasus/taskus",
@@ -37,6 +40,12 @@ catch (OptionException e)
 {
     Console.Error.WriteLine($"taskus: {e.Message}");
     return ExitCode.Invalid;
+}
+
+if (!help && arguments is ["schema"])
+{
+    Console.Write(TaskSchema.Generate());
+    return ExitCode.Success;
 }
 
 if (help || arguments.Count != 2 || arguments[0] is not ("run" or "validate"))

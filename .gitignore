@@ -1,5 +1,6 @@
 # Local only, never pushed: filled copies with internal detail, exports, scratch output.
 /temp/
+/wiki/
 
 # Passwords in plain text, kept next to the executable only.
 secrets.yaml

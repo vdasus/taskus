@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
 # Reads clients from an API and writes them to a new Excel file.
 # Expected response: {"data": {"items": [{"id": 1, "name": "...", "address": {"city": "..."}}, ...]}}
 name: api-clients

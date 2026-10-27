@@ -43,6 +43,7 @@ taskus run tasks/import-clients.yaml        # one task
 taskus run tasks/                           # every task in a folder
 taskus run tasks/import-clients.yaml --dry-run
 taskus validate tasks/                      # check task files without running them
+taskus schema > task.schema.json            # JSON Schema of task files
 ```
 
 `--dry-run` reads and maps, logs what would be written, and writes nothing.
@@ -78,6 +79,23 @@ report:
   when: onError            # always | onError | never
 smtp: ${secret:smtp_main}
 ```
+
+The file is read in three steps. YAML is turned into a JSON tree and `${secret:...}` references are replaced.
+The tree is bound to typed records (`TaskOptions`): an unknown key is an error, so a typo such as `procesed:` stops
+the task instead of being ignored. `type` values and HTTP `method` names may use any letter case. The bound task
+is then checked by FluentValidation rules (required values, ranges, templates that parse, e-mail addresses,
+`smtp` present where needed); every failed rule is reported at once, as `path: message`.
+
+The same records produce the JSON Schema of task files, committed as `schema/task.schema.json` and printed by
+`taskus schema`. Editors with a YAML language server (VS Code with the Red Hat YAML extension, JetBrains IDEs)
+complete and check task files that start with:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
+```
+
+The schema is stricter than the loader in one way: it wants numbers and booleans unquoted, while the loader also
+accepts them as quoted text.
 
 ### Folder sources
 
@@ -354,10 +372,14 @@ Directory.Packages.props        # central package versions
 src/Taskus/                     # console executable
 tests/Taskus.Tests/
 examples/                       # sample tasks, secrets.yaml.example
+schema/task.schema.json         # JSON Schema of task files, generated
 Docs/
 ```
 
-There is no separate core library until a second consumer needs one.
+There is no separate core library until a second consumer needs one. There is no DI container either:
+`CompositionRoot` is the one place that turns validated task options into a runner with its source, mapper and
+sink. A test checks that `schema/task.schema.json` matches the model; after changing `TaskOptions`, regenerate it
+with `taskus schema > schema/task.schema.json`.
 
 Publishing:
 
@@ -377,6 +399,7 @@ All dependencies are free and open source. Versions are pinned in `Directory.Pac
 | Optionus                                | 0.9.0   | MIT          | Command-line parsing                 |
 | Polly.Core                              | 8.8.1   | BSD-3-Clause | HTTP retries                         |
 | YamlDotNet                              | 18.1.0  | MIT          | Task and secrets files               |
+| FluentValidation                        | 12.2.0  | Apache-2.0   | Task file rules                      |
 | Scriban                                 | 7.5.3   | BSD-2-Clause | Mapping expressions and templates    |
 | Npgsql                                  | 10.0.3  | PostgreSQL   | PostgreSQL source and sink           |
 | MailKit                                 | 4.18.2  | MIT          | SMTP sink and report mail            |

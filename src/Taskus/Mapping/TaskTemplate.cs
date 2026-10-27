@@ -25,7 +25,8 @@ public sealed partial class TaskTemplate
     [GeneratedRegex(@"^\s*\{\{(?<e>(?:(?!\{\{|\}\}).)*)\}\}\s*$", RegexOptions.Singleline)]
     private static partial Regex SingleExpression();
 
-    public static Result<TaskTemplate> Parse(string where, string text)
+    /// <summary>The error, if any, lists Scriban's messages; the caller adds where the template is.</summary>
+    public static Result<TaskTemplate> Parse(string text)
     {
         var expression = SingleExpression().Match(text);
         var template = expression.Success
@@ -33,7 +34,7 @@ public sealed partial class TaskTemplate
             : Template.Parse(text);
 
         return template.HasErrors
-            ? Result.Failure<TaskTemplate>($"{where}: {string.Join("; ", template.Messages)}")
+            ? Result.Failure<TaskTemplate>(string.Join("; ", template.Messages))
             : new TaskTemplate(template, expression.Success);
     }
 

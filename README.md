@@ -22,12 +22,20 @@ taskus run tasks/                             # every *.yaml / *.yml in a folder
 taskus run tasks/import-clients.yaml --dry-run
 taskus validate tasks/
 taskus run tasks/import-clients.yaml --log-level=trace   # every row and HTTP call in the log files
+taskus schema                                 # JSON Schema of task files
 ```
 
 Exit codes: `0` success, `1` the run had errors, `2` a task file is invalid.
 
 Example tasks are in [examples/](examples). Copy `examples/secrets.yaml.example` to `secrets.yaml` next to
 `taskus.exe` and fill in the connection strings and SMTP settings.
+
+Editor support: start a task file with the line below. VS Code (with the Red Hat YAML extension) and JetBrains
+IDEs then complete settings and mark unknown or missing ones.
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
+```
 
 ## Templates
 
