@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>taskus</AssemblyName>
     <RootNamespace>Taskus</RootNamespace>
-    <Version>0.3.2</Version>
+    <Version>0.3.3</Version>
     <Authors>vdasus</Authors>
     <Copyright>Copyright (C) 2026 vdasus</Copyright>
     <InvariantGlobalization>false</InvariantGlobalization>
