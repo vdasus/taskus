@@ -22,14 +22,16 @@ jobs:
       - name: Build
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          NAME=taskus-$VERSION-win-x64
-          dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:Version=$VERSION -o publish/win-x64
-          mkdir -p release/$NAME
-          cp publish/win-x64/taskus.exe publish/win-x64/appsettings.json README.md LICENSE release/$NAME/
-          cp -r examples release/$NAME/
-          cd release
-          zip -qr $NAME.zip $NAME
-          sha256sum $NAME.zip > $NAME.zip.sha256
+          # self-contained: runs anywhere; framework-dependent: needs the .NET 10 runtime, much smaller.
+          for KIND in self-contained framework-dependent; do
+            NAME=taskus-$VERSION-win-x64-$KIND
+            SELF=$([ $KIND = self-contained ] && echo true || echo false)
+            dotnet publish src/Taskus -c Release -r win-x64 --self-contained $SELF -p:PublishSingleFile=true -p:Version=$VERSION -o publish/$KIND
+            mkdir -p release/$NAME
+            cp publish/$KIND/taskus.exe publish/$KIND/appsettings.json README.md LICENSE release/$NAME/
+            cp -r examples release/$NAME/
+            (cd release && zip -qr $NAME.zip $NAME && sha256sum $NAME.zip > $NAME.zip.sha256)
+          done
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,4 +43,4 @@ jobs:
           esac
           gh release create "$GITHUB_REF_NAME" release/*.zip release/*.sha256 \
             --verify-tag $PRERELEASE --title "Taskus $VERSION" --generate-notes \
-            --notes "Windows x64 build, self-contained: unpack the zip and run taskus.exe. See README.md and Docs/design.md."
+            --notes "Windows x64 builds: self-contained (no .NET needed) or framework-dependent (needs the .NET 10 runtime, smaller). Unpack a zip and run taskus.exe. See README.md and Docs/design.md."

@@ -388,7 +388,8 @@ dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingl
 ```
 
 Every dependency is managed code, so the result is `taskus.exe` plus `appsettings.json`, which stays outside the
-executable so it can be edited. Trimming is off.
+executable so it can be edited. Trimming is off. With `--self-contained false` the same command builds a
+framework-dependent `taskus.exe` that needs the .NET 10 runtime; releases ship both.
 
 ## Dependencies
 

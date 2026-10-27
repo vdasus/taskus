@@ -10,7 +10,7 @@ an HTTP API), convert each row, and put it into a sink (a database table, an Exc
 Each task is a YAML file. Taskus runs it manually or from Windows Task Scheduler: it checks the input,
 processes what it finds, reports the result, and exits.
 
-Status: version 0.1.1, second development iteration. Sources: `excel`, `postgres`, `http`. Sinks: `postgres`, `excel`, `smtp`, `http`.
+Status: version 0.2.0, second development iteration. Sources: `excel`, `postgres`, `http`. Sinks: `postgres`, `excel`, `smtp`, `http`.
 HTTP calls support retries and a rate limit.
 Design and task file reference: [Docs/design.md](Docs/design.md).
 
@@ -61,7 +61,9 @@ Taskus-specific rules (which variables exist, when a value keeps its type) are i
 
 ## Download
 
-Windows builds are attached to [GitHub releases](https://github.com/vdasus/taskus/releases): unpack the zip,
+Windows builds are attached to [GitHub releases](https://github.com/vdasus/taskus/releases) in two kinds:
+`self-contained` needs nothing installed; `framework-dependent` is much smaller but needs the
+[.NET 10 runtime](https://dotnet.microsoft.com/download/dotnet/10.0). Unpack the zip,
 copy `examples/secrets.yaml.example` to `secrets.yaml` next to `taskus.exe`, and adjust the example tasks.
 Versions follow [semantic versioning](https://semver.org); while the version is `0.x`, any release may break
 task files.
@@ -71,6 +73,7 @@ task files.
 ```
 dotnet test
 dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish/win-x64
+dotnet publish src/Taskus -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish/win-x64-fdd
 ```
 
 The result is `taskus.exe` and `appsettings.json` (logging settings); the machine that runs it needs no .NET
@@ -86,8 +89,8 @@ git tag -a v0.2.0 -m "Taskus 0.2.0"
 git push origin v0.2.0
 ```
 
-The release workflow tests, builds the Windows zip with the tag's version, and publishes a GitHub release with
-the zip and its SHA-256 checksum. `0.x` versions are marked as pre-release.
+The release workflow tests, builds both Windows zips (self-contained and framework-dependent) with the tag's
+version, and publishes a GitHub release with the zips and their SHA-256 checksums. `0.x` versions are marked as pre-release.
 
 ## Disclaimer
 
