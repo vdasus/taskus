@@ -1,19 +1,24 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
-# For every Id in the .xlsx files of the input folder, calls
-#   POST http://example.com/api   with body {"id": <Id>}
-# Sample input: examples/ids.xlsx (one column, Id).
+# For every row of the .xlsx files in the input folder, calls
+#   POST http://example.com/api/clients   with body
+#   {"clientId":"K-001","name":"Jonas Jonaitis","email":"jonas.jonaitis@example.com","amount":120.5,"dueDate":"2026-10-31"}
+# Sample input: examples/clients.xlsx.
 name: api-post
 source:
   type: excel
-  folder: C:\Taskus\in\ids
-  processed: C:\Taskus\in\ids\done
-  failed: C:\Taskus\in\ids\failed
-map:
-  id: "{{ row.Id }}"         # the JSON body has exactly the mapped fields: {"id": 101}
+  folder: C:\Taskus\in\clients
+  processed: C:\Taskus\in\clients\done
+  failed: C:\Taskus\in\clients\failed
+map:                         # the JSON body has exactly the mapped fields, under these names
+  clientId: "{{ row['Kliento Nr'] | string.strip }}"
+  name:     "{{ row.Vardas }} {{ row['Pavardė'] }}"
+  email:    "{{ row['El. paštas'] | string.downcase }}"
+  amount:   "{{ row.Suma ?? 0 }}"
+  dueDate:  "{{ row['Sąskaitos data'] | date.add_days 30 | date.to_string '%Y-%m-%d' }}"
 sink:
   type: http
   method: POST               # POST | PUT | PATCH send the mapped row as JSON
-  url: http://example.com/api
+  url: http://example.com/api/clients
   headers:
     Authorization: "Bearer ${secret:api_token}"
   timeout: 30                # seconds per attempt, default 100

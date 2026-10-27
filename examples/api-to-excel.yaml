@@ -1,6 +1,8 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
 # Reads clients from an API and writes them to a new Excel file.
-# Expected response: {"data": {"items": [{"id": 1, "name": "...", "address": {"city": "..."}}, ...]}}
+# Expected response:
+#   {"data": {"items": [{"id": 1, "name": "...", "email": "...",
+#     "address": {"street": "...", "city": "...", "zipcode": "..."}, "company": {"name": "..."}}, ...]}}
 name: api-clients
 source:
   type: http
@@ -13,9 +15,12 @@ source:
   retry:
     attempts: 3
 map:
-  id:   "{{ row.id }}"
-  name: "{{ row.name }}"
-  city: "{{ row.address.city }}"   # nested objects stay nested
+  ID:          "{{ row.id }}"
+  Vardas:      "{{ row.name }}"
+  "El. paštas": "{{ row.email | string.downcase }}"
+  Adresas:     "{{ row.address.street }}, {{ row.address.zipcode }} {{ row.address.city }}"   # nested objects stay nested
+  Miestas:     "{{ row.address.city }}"
+  "Įmonė":     "{{ row.company?.name ?? '-' }}"   # ?. : company may be null
 sink:
   type: excel
   folder: C:\Taskus\out

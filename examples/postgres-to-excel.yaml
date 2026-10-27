@@ -1,16 +1,26 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
-# Exports a query result to a new Excel file on every run.
+# Exports the invoices of the last 30 days to a new Excel file on every run.
+# Database columns: id, client_name, amount, issued. Excel columns are named for the reader and partly computed.
 name: export-invoices
 source:
   type: postgres
   connection: ${secret:pg_main}
   query: |
-    select id, client, amount, issued
+    select id, client_name, amount, issued
     from invoices
     where issued >= current_date - 30
+    order by issued
+map:
+  "Sąskaitos Nr": "INV-{{ row.id }}"
+  Klientas:       "{{ row.client_name }}"
+  "Suma be PVM":  "{{ row.amount }}"
+  "PVM 21%":      "{{ row.amount * 0.21 | math.round 2 }}"
+  "Suma su PVM":  "{{ row.amount * 1.21 | math.round 2 }}"
+  Data:           "{{ row.issued | date.to_string '%Y-%m-%d' }}"
 sink:
   type: excel
   folder: C:\Taskus\out
   file: "invoices_{{ date.now | date.to_string '%Y%m%d_%H%M' }}.xlsx"
+  sheet: Sąskaitos
   overwrite: false
 onError: stop

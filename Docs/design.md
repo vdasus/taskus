@@ -137,7 +137,8 @@ sink receives typed values. Any other value renders to text. Field names are cas
 `row.Code` reads the column `Code`; `row['Client name']` reads a name with spaces.
 
 Scriban rules to keep in mind: arithmetic on text fails the row (`"x" - 1`), except `*`, which repeats text
-(`"x" * 2` is `"xx"`).
+(`"x" * 2` is `"xx"`). A member of a null object fails the row (`row.company.name` when `company` is null);
+`row.company?.name ?? '-'` reads it safely. A map key with spaces or accents is quoted in YAML (`"El. paštas":`).
 
 ```yaml
 map:
@@ -363,7 +364,8 @@ Also: the run report, `run`, `validate`, `--dry-run`, HTTP retries and rate limi
 First iteration: Excel, PostgreSQL and SMTP transports, the `http` sink. Second iteration: the `http` source,
 retries and rate limit.
 
-Example tasks and a secrets template are in `examples/`.
+Example tasks, a sample input file (`clients.xlsx`) and a secrets template are in `examples/`. A test maps the
+sample rows through every example, so a broken example template fails the build.
 
 Third iteration (planned):
 

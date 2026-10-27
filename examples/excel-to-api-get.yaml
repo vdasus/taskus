@@ -1,19 +1,21 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
-# For every Id in the .xlsx files of the input folder, calls
-#   GET http://example.com/api/<Id>
-# Sample input: examples/ids.xlsx (one column, Id).
+# For every row of the .xlsx files in the input folder, calls
+#   GET http://example.com/api/clients/K-001?city=Vilnius
+# Sample input: examples/clients.xlsx.
 name: api-get
 source:
   type: excel
-  folder: C:\Taskus\in\ids
-  processed: C:\Taskus\in\ids\done
-  failed: C:\Taskus\in\ids\failed
+  folder: C:\Taskus\in\clients
+  processed: C:\Taskus\in\clients\done
+  failed: C:\Taskus\in\clients\failed
 map:
-  id: "{{ row.Id }}"
+  code: "{{ row['Kliento Nr'] | string.strip }}"
+  city: "{{ row.Miestas }}"
 sink:
   type: http
   method: GET                # GET | DELETE send no body
-  url: "http://example.com/api/{{ row.id | html.url_encode }}"   # row here is the mapped row
+  # row here is the mapped row; url_encode keeps a value from breaking the URL
+  url: "http://example.com/api/clients/{{ row.code | html.url_encode }}?city={{ row.city | html.url_encode }}"
 onError: continue
 report:
   folder: C:\Taskus\reports

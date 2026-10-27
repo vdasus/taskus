@@ -1,5 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
 # Sends one e-mail per row of every .xlsx in the input folder.
+# Sample input: examples/clients.xlsx. The smtp sink reads the mapped fields to, subject, body and optional cc.
 name: invoice-mail
 source:
   type: excel
@@ -7,17 +8,19 @@ source:
   processed: C:\Taskus\in\mail\done
   failed: C:\Taskus\in\mail\failed
 map:
-  to:      "{{ row.Email }}"
-  subject: "Invoice {{ row.Id }}"
+  to:      "{{ row['El. paštas'] }}"
+  cc:      accounting@example.com
+  subject: "Sąskaita {{ row['Kliento Nr'] | string.strip }} ({{ row['Sąskaitos data'] | date.to_string '%Y-%m-%d' }})"
   body: |
-    Hello {{ row.Name }},
+    Sveiki, {{ row.Vardas }} {{ row['Pavardė'] }},
 
-    amount due: {{ row.Amount | math.format "0.00" }}.
+    mokėtina suma: {{ row.Suma ?? 0 | math.format "0.00" }} EUR,
+    apmokėti iki {{ row['Sąskaitos data'] | date.add_days 30 | date.to_string '%Y-%m-%d' }}.
 sink:
   type: smtp
   html: false
 onError: continue
-logExclude: [Email, to]      # e-mail addresses never appear in trace logs
+logExclude: [El. paštas, to] # e-mail addresses never appear in trace logs
 report:
   mailTo: me@example.com
   when: always

@@ -1,5 +1,7 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
 # Imports every .xlsx from the input folder into a PostgreSQL table.
+# Sample input: examples/clients.xlsx, columns: Kliento Nr, Vardas, Pavardė, El. paštas, Suma, Sąskaitos data, Miestas.
+# Target table: public.clients (client_code, full_name, email, amount, invoice_date, city).
 name: import-clients
 source:
   type: excel
@@ -8,9 +10,13 @@ source:
   processed: C:\Taskus\in\clients\done
   failed: C:\Taskus\in\clients\failed
 map:
-  code:  "{{ row.Code | string.strip }}"
-  name:  "{{ row['Client name'] }}"
-  limit: "{{ row.Limit ?? 0 }}"
+  # target column: template over the source row; names with spaces or accents need row['...']
+  client_code:  "{{ row['Kliento Nr'] | string.strip }}"
+  full_name:    "{{ row.Vardas }} {{ row['Pavardė'] }}"       # two fields into one
+  email:        "{{ row['El. paštas'] | string.downcase }}"
+  amount:       "{{ row.Suma ?? 0 }}"                        # a single {{ }} keeps the number type
+  invoice_date: "{{ row['Sąskaitos data'] }}"                # stays a date for a date column
+  city:         "{{ row.Miestas }}"
 sink:
   type: postgres
   connection: ${secret:pg_main}
