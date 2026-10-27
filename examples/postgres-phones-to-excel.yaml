@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
+# Exports phone and text from a table to a new Excel file with the columns Telefonas, Tekstas.
+name: export-phones
+source:
+  type: postgres
+  connection: ${secret:pg_main}
+  query: select phone, text from datatable
+map:
+  Telefonas: "{{ row.phone }}"
+  Tekstas: "{{ row.text }}"
+sink:
+  type: excel
+  folder: C:\Taskus\out
+  file: "phones_{{ date.now | date.to_string '%Y%m%d_%H%M' }}.xlsx"
+onError: stop
