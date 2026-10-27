@@ -1,0 +1,25 @@
+# Reads clients from an API and writes them to a new Excel file.
+# Expected response: {"data": {"items": [{"id": 1, "name": "...", "address": {"city": "..."}}, ...]}}
+name: api-clients
+source:
+  type: http
+  method: GET                # POST, PUT, PATCH can send a body:
+  # body: '{"from": "{{ date.now | date.add_days -1 | date.to_string "%Y-%m-%d" }}"}'
+  url: http://example.com/api/clients
+  headers:
+    Authorization: "Bearer ${secret:api_token}"
+  items: data.items          # dotted path to the array of rows; default: the response root
+  retry:
+    attempts: 3
+map:
+  id:   "{{ row.id }}"
+  name: "{{ row.name }}"
+  city: "{{ row.address.city }}"   # nested objects stay nested
+sink:
+  type: excel
+  folder: C:\Taskus\out
+  file: "clients_{{ date.now | date.to_string '%Y%m%d_%H%M' }}.xlsx"
+onError: continue
+report:
+  folder: C:\Taskus\reports
+  when: onError

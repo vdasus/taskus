@@ -9,8 +9,9 @@ Typical tasks:
 - Run a `select` against a database, write the result to an Excel file.
 - Read an Excel file, send an e-mail for each row.
 - Run a `select` against a database, call an external HTTP API for each row.
+- Read Excel files with ids, call an HTTP API for each id.
 
-A task is a YAML file. Taskus is a single console executable; the machine that runs it needs neither the
+A task is a YAML file. Taskus is a console executable with an `appsettings.json` for logging; the machine that runs it needs neither the
 .NET SDK nor the .NET runtime.
 
 ## Model
@@ -80,13 +81,41 @@ smtp: ${secret:smtp_main}
 
 ### Folder sources
 
-A source with `folder` and `pattern` processes each matching file separately. When nothing matches, the run
-ends with exit code `0` and writes nothing. After processing, each file moves to `processed` or `failed`, so the
-next scheduled run does not pick it up again.
+A source with `folder` and `pattern` (default `*.xlsx`) processes each matching file separately; each file is
+one *unit*. The first sheet row holds the field names; `sheet` picks a sheet other than the first. Empty rows are
+skipped, and row numbers in the report are sheet row numbers. Excel lock files (`~$*.xlsx`) are ignored.
+
+When nothing matches, the run ends with exit code `0` and writes nothing.
+
+After a file is processed it moves:
+
+- to `processed` when the sink completed it, including a `continue` run that skipped some rows (the report lists
+  them; moving such a file to `failed` and running it again would duplicate the rows already written);
+- to `failed` when the unit stopped or was rolled back;
+- nowhere when the sink could not open (database or mail server unreachable): nothing was read, so the next run
+  retries the file.
+
+`processed` and `failed` are optional; a file without a target folder stays in place. A name clash in the target
+folder adds a timestamp to the file name.
+
+A `postgres` source is one unit: the result of `query`. An `http` source is one unit: one API response.
+
+### Units
+
+A unit is the scope of one sink session: one Excel output file, one database transaction, one SMTP connection.
+The run report has one section per unit.
 
 ### Mapping and templates
 
 Mapping expressions and e-mail templates use one engine: Scriban. Templates live inside the task file.
+Without `map`, source rows pass to the sink unchanged.
+
+A value that is a single `{{ expression }}` keeps the type of the expression (number, date, null), so a database
+sink receives typed values. Any other value renders to text. Field names are case-sensitive inside templates:
+`row.Code` reads the column `Code`; `row['Client name']` reads a name with spaces.
+
+Scriban rules to keep in mind: arithmetic on text fails the row (`"x" - 1`), except `*`, which repeats text
+(`"x" * 2` is `"xx"`).
 
 ```yaml
 map:
@@ -101,19 +130,31 @@ map:
 
 - `onError: stop` ends the run at the first failed row.
 - `onError: continue` skips the failed row and records it in the report.
-- `maxErrors` stops a `continue` run after the given number of errors.
+- `maxErrors` (default `100`, `0` means no limit) stops a `continue` run after the given number of errors,
+  counted over all units of the run.
+
+The default is `onError: stop`.
 
 ### Transactions (database sinks)
 
-- `transaction: perRow` commits each row separately. Failed rows go to the report; the other rows stay.
-- `transaction: all` uses one transaction per run and inserts through `COPY`. Any error, in mapping or in the
-  database, rolls back the whole run.
+- `transaction: perRow` (default) commits each row separately. Failed rows go to the report; the other rows stay.
+- `transaction: all` uses one transaction per unit (one input file). The first error, in mapping or in the
+  database, rolls the unit back; the run goes on with the next unit unless `onError: stop`.
 
-Batches with a `batchSize` are not supported: with `COPY`, one bad row fails the whole batch anyway.
+Inserts use one prepared statement per unit. Columns are the mapped field names. Taskus reads the column types
+from the table and converts values to them: text to numbers, dates and booleans (invariant culture), Excel date
+numbers to dates, empty text to `null` for non-text columns. Dates without a time zone are taken as local time.
+
+Batches with a `batchSize` are not supported; add them when a task needs them.
 
 ### Excel sink
 
-The file name is a Scriban template. `overwrite: true|false` controls an existing file.
+The file name is a Scriban template; `unit` holds the input file name without extension (`query` for a
+database source). `overwrite: true|false` (default `false`) controls an existing file; with `false` the unit fails
+before reading, and the input stays in place. `sheet` names the sheet (default `Sheet1`).
+
+With `onError: continue` the file holds the rows that mapped without errors. With `onError: stop` an error leaves
+no file. Rows are kept in memory until the unit ends.
 
 ```yaml
 sink:
@@ -123,18 +164,110 @@ sink:
   overwrite: false
 ```
 
+### SMTP sink
+
+Sends one e-mail per row. Mapped fields: `to` (several addresses separated by `,` or `;`), `subject`, `body`,
+optional `cc`. `html: true` sends the body as HTML. Server settings come from the task's `smtp` section.
+A sent e-mail cannot be recalled, so this sink never rolls back.
+
+### HTTP sink
+
+Calls an HTTP API once per row.
+
+```yaml
+map:
+  id: "{{ row.Id }}"
+sink:
+  type: http
+  method: POST                  # GET | POST | PUT | PATCH | DELETE, default POST
+  url: http://example.com/api   # template over the mapped row
+  headers:
+    Authorization: "Bearer ${secret:api_token}"
+  timeout: 30                   # seconds per attempt, default 100
+  retry:
+    attempts: 3                 # extra attempts after the first call, default 3
+    delay: 2                    # seconds before the first retry, default 1
+  rateLimit: 5                  # requests per second, default: no limit
+```
+
+- `url` is a template; `row` in it is the mapped row, e.g. `http://example.com/api/{{ row.id | html.url_encode }}`.
+  The result must be an absolute `http` or `https` URL.
+- POST, PUT and PATCH send the mapped row as a JSON object (`{"id":101}`); GET and DELETE send no body.
+- `headers` go on every request; `Content-Type` replaces the default `application/json`.
+- Any 2xx status is success. Other statuses, network errors and time-outs fail the row; the error message holds
+  the status and the response body (an HTML error page is left out, long bodies are cut).
+- The response body is not kept. A call that reached the API cannot be undone, so this sink never rolls back.
+
+### HTTP retries and rate limit
+
+The `http` source and sink share these settings.
+
+- Without a `retry` section there are no retries. With it, network errors, time-outs and statuses 408, 429 and
+  5xx are retried `attempts` times. Other 4xx statuses mean the request itself is wrong and are not retried.
+- The delay doubles with every attempt (exponential backoff with jitter), starting at `delay` seconds.
+  A `Retry-After` header from the server takes precedence, capped at 60 seconds so a single response cannot
+  stall a scheduled run.
+- Each retry is logged as a warning. After the last attempt the row (sink) or the unit (source) fails with the
+  last error.
+- `rateLimit` sets the minimum interval between requests: `5` means at most five requests per second, `0.5` one
+  request every two seconds. Retries count against the limit. Rows are processed one at a time, so the limit is a
+  plain interval, not a queue.
+- `timeout` applies to each attempt.
+
+Retries use Polly (`Polly.Core`). The rate limit is a few lines of Taskus code: a sequential pipeline does not
+need a rate-limiting library.
+
+### HTTP source
+
+Reads rows from one JSON response.
+
+```yaml
+source:
+  type: http
+  method: GET                   # default GET; POST, PUT, PATCH may send a body
+  url: http://example.com/api/clients
+  body: '{"from": "{{ date.now | date.to_string "%Y-%m-%d" }}"}'   # optional template, sent as JSON
+  headers:
+    Authorization: "Bearer ${secret:api_token}"
+  items: data.items             # dotted path to the array of rows; default: the response root
+  retry:
+    attempts: 3
+```
+
+- An array element that is an object is one row. Any other element (`[101, 102]`) becomes a row with one field,
+  `value`. A single object is one row.
+- Nested objects and arrays stay nested, so a mapping can read `row.address.city`.
+- Numbers become whole numbers (`long`) when they have no fraction, otherwise `decimal`.
+- A failed call, a response that is not JSON, or a missing `items` path fails the unit; the report shows why.
+- `url` and `body` are templates without `row` (for example, `date.now`).
+- The whole response is read into memory. Pagination is not supported yet.
+
 ### Logging and reporting
 
-- Each run writes a log file.
+- Logging is configured in the `Serilog` section of `appsettings.json` next to the executable (format of
+  Serilog.Settings.Configuration). The shipped file writes:
+  - to the console, `Information` and above;
+  - a text log per run, `taskus_<yyyyMMdd_HHmmss>.log`, with debug detail;
+  - a JSON log per run, `taskus_<yyyyMMdd_HHmmss>.json`: one JSON object per line (Serilog `JsonFormatter`),
+    with the message template and its properties as separate fields, for log tools and scripts.
+- In a sink `path`, `{run}` becomes the run start time. A relative path resolves against the log folder: `logs`
+  next to the executable, or the folder given by `--logs`. An absolute path is used as is.
+- Sinks, levels and output templates change in `appsettings.json` without a rebuild. The executable includes the
+  Console and File sinks; another sink package needs a rebuild with that package referenced.
+- Without `appsettings.json`, Taskus logs to the console and to a text file per run.
 - At the end of a run Taskus builds a summary: rows read, rows written, errors, and the first N errors with the
   source file, row number and reason. With several input files the summary has one section per file.
-- `report.folder` saves the summary as an `.xlsx` file. `report.mailTo` sends it by e-mail, according to
-  `report.when`.
+- `report.folder` saves the summary as an `.xlsx` file (sheets `Summary` and `Errors`). `report.mailTo` sends
+  it by e-mail with the file attached. Both follow `report.when` (default `onError`). `mailTo` needs an `smtp`
+  section.
+- A dry run writes no report.
 
 ## Secrets
 
 Connection strings and SMTP credentials live in `secrets.yaml` next to the executable. A task refers to them as
-`${secret:<name>}`.
+`${secret:<name>}`. `--secrets` points to another file. A value that is only a reference takes the secret as a
+whole, so a secret can be a mapping (`smtp: ${secret:smtp_main}`); a reference inside longer text must point to a
+text secret.
 
 ```yaml
 pg_main: Host=db;Database=main;Username=taskus;Password=...
@@ -152,16 +285,20 @@ A stronger store (DPAPI, a vault) can replace it later.
 
 ## Scope
 
-First iteration:
+| Kind    | Types                               |
+|---------|-------------------------------------|
+| Sources | `excel`, `postgres`, `http`         |
+| Sinks   | `postgres`, `excel`, `smtp`, `http` |
 
-| Kind    | Types                       |
-|---------|-----------------------------|
-| Sources | `excel`, `postgres`         |
-| Sinks   | `postgres`, `excel`, `smtp` |
+Also: the run report, `run`, `validate`, `--dry-run`, HTTP retries and rate limit.
 
-Also in the first iteration: the run report, `run`, `validate`, `--dry-run`.
+First iteration: Excel, PostgreSQL and SMTP transports, the `http` sink. Second iteration: the `http` source,
+retries and rate limit.
 
-Second iteration: `http` source and sink. Other databases are added when a task needs them.
+Example tasks and a secrets template are in `examples/`.
+
+Not done yet, added when a task needs them: pagination for the `http` source, keeping the API response in the
+`http` sink, batched database inserts, other databases.
 
 ## Solution layout
 
@@ -171,6 +308,7 @@ global.json
 Directory.Packages.props        # central package versions
 src/Taskus/                     # console executable
 tests/Taskus.Tests/
+examples/                       # sample tasks, secrets.yaml.example
 Docs/
 ```
 
@@ -182,24 +320,28 @@ Publishing:
 dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 ```
 
-Every dependency is managed code, so the result is a single `taskus.exe`. Trimming is off.
+Every dependency is managed code, so the result is `taskus.exe` plus `appsettings.json`, which stays outside the
+executable so it can be edited. Trimming is off.
 
 ## Dependencies
 
 All dependencies are free and open source. Versions are pinned in `Directory.Packages.props`.
 
-| Package                     | Version | License      | Use                               |
-|-----------------------------|---------|--------------|-----------------------------------|
-| Optionus                    | 0.9.0   | MIT          | Command-line parsing              |
-| YamlDotNet                  | 18.1.0  | MIT          | Task and secrets files            |
-| Scriban                     | 7.5.3   | BSD-2-Clause | Mapping expressions and templates |
-| Npgsql                      | 10.0.3  | PostgreSQL   | PostgreSQL source and sink        |
-| MailKit                     | 4.18.2  | MIT          | SMTP sink and report mail         |
-| MiniExcel                   | 1.46.0  | Apache-2.0   | Excel source and sink, streaming  |
-| CSharpFunctionalExtensions  | 3.7.0   | MIT          | `Result`, `Maybe`                 |
-| Serilog                     | 4.4.0   | Apache-2.0   | Logging                           |
-| Serilog.Sinks.File          | 7.0.0   | Apache-2.0   | Log file per run                  |
-| Serilog.Sinks.Console       | 6.1.1   | Apache-2.0   | Console log                       |
+| Package                                 | Version | License      | Use                                  |
+|-----------------------------------------|---------|--------------|--------------------------------------|
+| Optionus                                | 0.9.0   | MIT          | Command-line parsing                 |
+| Polly.Core                              | 8.8.1   | BSD-3-Clause | HTTP retries                         |
+| YamlDotNet                              | 18.1.0  | MIT          | Task and secrets files               |
+| Scriban                                 | 7.5.3   | BSD-2-Clause | Mapping expressions and templates    |
+| Npgsql                                  | 10.0.3  | PostgreSQL   | PostgreSQL source and sink           |
+| MailKit                                 | 4.18.2  | MIT          | SMTP sink and report mail            |
+| MiniExcel                               | 1.46.0  | Apache-2.0   | Excel source and sink, streaming     |
+| CSharpFunctionalExtensions              | 3.7.0   | MIT          | `Result`, `Maybe`                    |
+| Serilog                                 | 4.4.0   | Apache-2.0   | Logging                              |
+| Serilog.Sinks.File                      | 7.0.0   | Apache-2.0   | Log file per run                     |
+| Serilog.Sinks.Console                   | 6.1.1   | Apache-2.0   | Console log                          |
+| Serilog.Settings.Configuration          | 10.0.1  | Apache-2.0   | Logging set up from appsettings.json |
+| Microsoft.Extensions.Configuration.Json | 10.0.14 | MIT          | Reads appsettings.json               |
 
 Tests:
 
@@ -211,7 +353,7 @@ Tests:
 | AutoFixture                 | 4.18.1  | MIT          |
 | AutoFixture.Xunit3          | 4.19.0  | MIT          |
 | AutoFixture.AutoNSubstitute | 4.18.1  | MIT          |
-| NSubstitute                 | 6.2.0   | BSD-3-Clause |
+| NSubstitute                 | 5.3.0   | BSD-3-Clause |
 | FluentAssertions            | 7.2.2   | Apache-2.0   |
 
 FluentAssertions is pinned to 7.x: version 8 and later use a commercial license. EPPlus is not used for the

@@ -1,0 +1,22 @@
+# Sends one e-mail per row of every .xlsx in the input folder.
+name: invoice-mail
+source:
+  type: excel
+  folder: C:\Taskus\in\mail
+  processed: C:\Taskus\in\mail\done
+  failed: C:\Taskus\in\mail\failed
+map:
+  to:      "{{ row.Email }}"
+  subject: "Invoice {{ row.Id }}"
+  body: |
+    Hello {{ row.Name }},
+
+    amount due: {{ row.Amount | math.format "0.00" }}.
+sink:
+  type: smtp
+  html: false
+onError: continue
+report:
+  mailTo: me@example.com
+  when: always
+smtp: ${secret:smtp_main}

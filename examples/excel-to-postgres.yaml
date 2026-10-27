@@ -1,0 +1,24 @@
+# Imports every .xlsx from the input folder into a PostgreSQL table.
+name: import-clients
+source:
+  type: excel
+  folder: C:\Taskus\in\clients
+  pattern: "*.xlsx"
+  processed: C:\Taskus\in\clients\done
+  failed: C:\Taskus\in\clients\failed
+map:
+  code:  "{{ row.Code | string.strip }}"
+  name:  "{{ row['Client name'] }}"
+  limit: "{{ row.Limit ?? 0 }}"
+sink:
+  type: postgres
+  connection: ${secret:pg_main}
+  table: public.clients
+  transaction: perRow      # perRow | all
+onError: continue          # stop | continue
+maxErrors: 100
+report:
+  folder: C:\Taskus\reports
+  mailTo: me@example.com
+  when: onError            # always | onError | never
+smtp: ${secret:smtp_main}

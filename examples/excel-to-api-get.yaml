@@ -1,0 +1,19 @@
+# For every Id in the .xlsx files of the input folder, calls
+#   GET http://example.com/api/<Id>
+# Sample input: examples/ids.xlsx (one column, Id).
+name: api-get
+source:
+  type: excel
+  folder: C:\Taskus\in\ids
+  processed: C:\Taskus\in\ids\done
+  failed: C:\Taskus\in\ids\failed
+map:
+  id: "{{ row.Id }}"
+sink:
+  type: http
+  method: GET                # GET | DELETE send no body
+  url: "http://example.com/api/{{ row.id | html.url_encode }}"   # row here is the mapped row
+onError: continue
+report:
+  folder: C:\Taskus\reports
+  when: onError

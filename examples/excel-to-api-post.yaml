@@ -1,0 +1,26 @@
+# For every Id in the .xlsx files of the input folder, calls
+#   POST http://example.com/api   with body {"id": <Id>}
+# Sample input: examples/ids.xlsx (one column, Id).
+name: api-post
+source:
+  type: excel
+  folder: C:\Taskus\in\ids
+  processed: C:\Taskus\in\ids\done
+  failed: C:\Taskus\in\ids\failed
+map:
+  id: "{{ row.Id }}"         # the JSON body has exactly the mapped fields: {"id": 101}
+sink:
+  type: http
+  method: POST               # POST | PUT | PATCH send the mapped row as JSON
+  url: http://example.com/api
+  headers:
+    Authorization: "Bearer ${secret:api_token}"
+  timeout: 30                # seconds per attempt, default 100
+  retry:                     # retries network errors, time-outs, 408, 429 and 5xx
+    attempts: 3              # extra attempts after the first call
+    delay: 2                 # seconds before the first retry, then doubled (with jitter)
+  rateLimit: 5               # at most 5 requests per second
+onError: continue
+report:
+  folder: C:\Taskus\reports
+  when: onError

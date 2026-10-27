@@ -1,0 +1,15 @@
+# Exports a query result to a new Excel file on every run.
+name: export-invoices
+source:
+  type: postgres
+  connection: ${secret:pg_main}
+  query: |
+    select id, client, amount, issued
+    from invoices
+    where issued >= current_date - 30
+sink:
+  type: excel
+  folder: C:\Taskus\out
+  file: "invoices_{{ date.now | date.to_string '%Y%m%d_%H%M' }}.xlsx"
+  overwrite: false
+onError: stop

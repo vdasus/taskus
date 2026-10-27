@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>taskus</AssemblyName>
+    <RootNamespace>Taskus</RootNamespace>
+    <Version>0.1.0</Version>
+    <Authors>vdasus</Authors>
+    <Copyright>Copyright (C) 2026 vdasus</Copyright>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Taskus.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Kept next to taskus.exe, outside the single file, so it can be edited. -->
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CSharpFunctionalExtensions" />
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="MiniExcel" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Optionus" />
+    <PackageReference Include="Polly.Core" />
+    <PackageReference Include="Scriban" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Settings.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+</Project>
