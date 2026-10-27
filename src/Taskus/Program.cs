@@ -73,6 +73,12 @@ catch (OperationCanceledException)
     Log.Warning("Cancelled");
     return ExitCode.Errors;
 }
+catch (Exception ex)
+{
+    // Logged instead of the runtime's unmasked stack trace on the console.
+    Log.Fatal("taskus failed: {Error}", ex.Message);
+    return ExitCode.Invalid;
+}
 finally
 {
     await Log.CloseAndFlushAsync();

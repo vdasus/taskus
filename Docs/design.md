@@ -49,6 +49,7 @@ taskus schema > task.schema.json            # JSON Schema of task files
 `--dry-run` reads and maps, logs what would be written, and writes nothing.
 
 Exit codes: `0` success, `1` the run had row errors, `2` a task file is invalid or a run could not start.
+An unexpected error in one task file is logged (message only, masked) and the next file still runs.
 Windows Task Scheduler can act on these codes.
 
 ## Task file
@@ -208,7 +209,7 @@ map:
 sink:
   type: http
   method: POST                  # GET | POST | PUT | PATCH | DELETE, default POST
-  url: http://example.com/api   # template over the mapped row
+  url: https://example.com/api   # template over the mapped row
   headers:
     Authorization: "Bearer ${secret:api_token}"
   timeout: 30                   # seconds per attempt, default 100
@@ -218,7 +219,7 @@ sink:
   rateLimit: 5                  # requests per second, default: no limit
 ```
 
-- `url` is a template; `row` in it is the mapped row, e.g. `http://example.com/api/{{ row.id | html.url_encode }}`.
+- `url` is a template; `row` in it is the mapped row, e.g. `https://example.com/api/{{ row.id | html.url_encode }}`.
   The result must be an absolute `http` or `https` URL.
 - POST, PUT and PATCH send the mapped row as a JSON object (`{"id":101}`); GET and DELETE send no body.
 - `headers` go on every request; `Content-Type` replaces the default `application/json`.
@@ -255,7 +256,7 @@ Reads rows from one JSON response.
 source:
   type: http
   method: GET                   # default GET; POST, PUT, PATCH may send a body
-  url: http://example.com/api/clients
+  url: https://example.com/api/clients
   body: '{"from": "{{ date.now | date.to_string "%Y-%m-%d" }}"}'   # optional template, sent as JSON
   headers:
     Authorization: "Bearer ${secret:api_token}"
@@ -339,7 +340,7 @@ whole, so a secret can be a mapping (`smtp: ${secret:smtp_main}`); a reference i
 text secret.
 
 ```yaml
-pg_main: Host=db;Database=main;Username=taskus;Password=...
+pg_main: Host=db;Database=main;Username=taskus;Password=...;SSL Mode=VerifyFull
 smtp_main:
   server: smtp.example.com
   port: 587
@@ -351,6 +352,10 @@ smtp_main:
 `secrets.yaml` holds passwords in plain text. Restrict its NTFS permissions to the accounts that run Taskus
 (the user account and the Task Scheduler account). The file is in `.gitignore` and is never committed.
 A stronger store (DPAPI, a vault) can replace it later.
+
+Secrets also need encrypted transport. Npgsql defaults to `SSL Mode=Prefer`, which falls back to plain text and
+does not check the server certificate; use `SSL Mode=VerifyFull` (or `Require` with a self-signed server
+certificate) and `Disable` only on purpose for a local database. Send API tokens only to `https://` URLs.
 
 ## Scope
 

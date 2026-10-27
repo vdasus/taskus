@@ -50,10 +50,12 @@ public sealed class PostgresSink(string connection, string table, TransactionSco
                 unit, db.Host, db.Port, db.Database, db.UserName, transaction);
             return new Session(db, tx, table, log);
         }
-        catch (NpgsqlException ex)
+        catch (Exception ex)
         {
             await db.DisposeAsync();
-            return Result.Failure<ISinkSession>(ex.Message);
+            if (ex is NpgsqlException)
+                return Result.Failure<ISinkSession>(ex.Message);
+            throw;
         }
     }
 

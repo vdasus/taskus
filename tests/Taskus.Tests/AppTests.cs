@@ -1,3 +1,4 @@
+using System.IO.Abstractions.TestingHelpers;
 using FluentAssertions;
 using MiniExcelLibs;
 using Serilog.Core;
@@ -138,5 +139,24 @@ public class AppTests
         exit.Should().Be(ExitCode.Errors);
         File.Exists(temp.File("done", "a.xlsx")).Should().BeTrue();
         File.Exists(temp.File("in", "b.xlsx")).Should().BeTrue("b was not written, so it must stay for the next run");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public async Task Validate_UnreadableTaskFile_ReportsItAndGoesOn()
+    {
+        var good = "source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z.xlsx }\n";
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [Path.Combine("tasks", "a.yaml")] = new(good) { AllowedFileShare = FileShare.None }, // locked: reading throws IOException
+            [Path.Combine("tasks", "b.yaml")] = new(good),
+        });
+        var sink = new CollectingSink();
+
+        var exit = await new App(sink.Logger(), fileSystem: fs).ExecuteAsync("validate", "tasks", "none.yaml", false, TestContext.Current.CancellationToken);
+
+        exit.Should().Be(ExitCode.Invalid);
+        sink.Text.Should().Contain("a.yaml\": \"The process cannot access the file").And.Contain("b.yaml\": valid");
     }
 }

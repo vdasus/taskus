@@ -8,7 +8,7 @@ source:
   type: http
   method: GET                # POST, PUT, PATCH can send a body:
   # body: '{"from": "{{ date.now | date.add_days -1 | date.to_string "%Y-%m-%d" }}"}'
-  url: http://example.com/api/clients
+  url: https://example.com/api/clients
   headers:
     Authorization: "Bearer ${secret:api_token}"
   items: data.items          # dotted path to the array of rows; default: the response root

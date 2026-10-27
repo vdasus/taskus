@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
 # For every row of the .xlsx files in the input folder, calls
-#   POST http://example.com/api/clients   with body
+#   POST https://example.com/api/clients   with body
 #   {"clientId":"K-001","name":"Jonas Jonaitis","email":"jonas.jonaitis@example.com","amount":120.5,"dueDate":"2026-10-31"}
 # Sample input: examples/clients.xlsx.
 name: api-post
@@ -18,7 +18,7 @@ map:                         # the JSON body has exactly the mapped fields, unde
 sink:
   type: http
   method: POST               # POST | PUT | PATCH send the mapped row as JSON
-  url: http://example.com/api/clients
+  url: https://example.com/api/clients
   headers:
     Authorization: "Bearer ${secret:api_token}"
   timeout: 30                # seconds per attempt, default 100

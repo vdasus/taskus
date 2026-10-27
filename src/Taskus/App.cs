@@ -36,9 +36,20 @@ public sealed class App(ILogger log, SecretMask? secretMask = null, IFileSystem?
         var exit = ExitCode.Success;
         foreach (var file in files.Value)
         {
-            var code = verb == "validate"
-                ? Validate(file, secrets.Value)
-                : await RunAsync(file, secrets.Value, dryRun, ct);
+            int code;
+            try
+            {
+                code = verb == "validate"
+                    ? Validate(file, secrets.Value)
+                    : await RunAsync(file, secrets.Value, dryRun, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // One broken task must not stop the others. The message goes as a property, so secrets are masked.
+                log.Error("{File}: {Error}", file, ex.Message);
+                code = ExitCode.Invalid;
+            }
+
             exit = Math.Max(exit, code);
         }
 

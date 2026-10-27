@@ -75,10 +75,13 @@ internal static class YamlJson
 
     private static JsonNode? Convert(YamlNode node) => node switch
     {
-        YamlMappingNode map => new JsonObject(map.Children.Select(kv => KeyValuePair.Create(((YamlScalarNode)kv.Key).Value ?? "", Convert(kv.Value)))),
+        YamlMappingNode map => new JsonObject(map.Children.Select(kv => KeyValuePair.Create(Key(kv.Key), Convert(kv.Value)))),
         YamlSequenceNode list => new JsonArray(list.Children.Select(Convert).ToArray()),
         YamlScalarNode { Style: ScalarStyle.Plain, Value: null or "" or "~" or "null" or "Null" or "NULL" } => null,
         YamlScalarNode scalar => JsonValue.Create(scalar.Value ?? ""),
         _ => throw new YamlException($"unsupported YAML node {node.NodeType}"),
     };
+
+    private static string Key(YamlNode key) =>
+        key is YamlScalarNode scalar ? scalar.Value ?? "" : throw new YamlException(key.Start, key.End, "a key must be plain text, not a list or mapping");
 }

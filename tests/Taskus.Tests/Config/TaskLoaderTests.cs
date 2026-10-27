@@ -101,6 +101,7 @@ public class TaskLoaderTests
     [InlineData("source: { type: excel, folder: x }\n", "missing required setting 'sink'")]
     [InlineData("source: { type: excel, folder: x }\nsink: { type: http, method: TRACE, url: http://x }\n", "sink.method: must be GET | POST | PUT | PATCH | DELETE")]
     [InlineData("name: a/b\nsource: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z }\n", "name: must not contain characters")]
+    [InlineData("? [x]\n: 1\n", "a key must be plain text")]
     [InlineData("- a\n- b\n", "must be a mapping")]
     public void Load_BadFile_ExplainsTheProblem(string yaml, string error)
     {
