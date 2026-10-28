@@ -374,9 +374,23 @@ smtp_main:
   from: noreply@example.com
 ```
 
-`secrets.yaml` holds passwords in plain text. Restrict its NTFS permissions to the accounts that run Taskus
-(the user account and the Task Scheduler account). The file is in `.gitignore` and is never committed.
-A stronger store (DPAPI, a vault) can replace it later.
+On Windows, secrets are kept encrypted. `taskus secrets protect` encrypts `secrets.yaml` with Windows DPAPI into
+`secrets.sec` (the same name with the extension `.sec`), reads it back to check it, and deletes `secrets.yaml`.
+`taskus secrets unprotect` writes `secrets.yaml` back for editing and keeps `secrets.sec`. No password is involved:
+Windows holds the key.
+
+- By default the key belongs to the machine: any account on this machine can decrypt `secrets.sec`, so the Task
+  Scheduler account does not matter. `--current-user` binds the key to the account that runs `protect`; the
+  scheduled task must then run under that same account.
+- `secrets.sec` copied to another machine (a backup, an e-mail, a commit) cannot be decrypted. It does not protect
+  against code that already runs on the machine (or, with `--current-user`, under that account).
+- `run` and `validate` on Windows read only `secrets.sec`. They stop with an error when only `secrets.yaml` exists
+  (`run 'taskus secrets protect'`) and when both exist (delete the unprotected `secrets.yaml`), so a plain file
+  left after editing is never used silently. No file at all means no secrets.
+- Other systems have no DPAPI: Taskus reads `secrets.yaml` there as is, and `secrets protect` is refused. Allow only
+  the account that runs Taskus to read the file (`chmod 600`).
+
+Both files are in `.gitignore` and are never committed.
 
 Secrets also need encrypted transport. Npgsql defaults to `SSL Mode=Prefer`, which falls back to plain text and
 does not check the server certificate; use `SSL Mode=VerifyFull` (or `Require` with a self-signed server
@@ -454,6 +468,7 @@ All dependencies are free and open source. Versions are pinned in `Directory.Pac
 | Scriban                                 | 7.5.3   | BSD-2-Clause | Mapping expressions and templates    |
 | Npgsql                                  | 10.0.3  | PostgreSQL   | PostgreSQL source and sink           |
 | System.Data.Odbc                        | 10.0.14 | MIT          | ODBC source and sink                 |
+| System.Security.Cryptography.ProtectedData | 10.0.14 | MIT       | `secrets.sec` (Windows DPAPI)        |
 | MailKit                                 | 4.18.2  | MIT          | SMTP sink and report mail            |
 | MiniExcel                               | 1.46.0  | Apache-2.0   | Excel source and sink, streaming     |
 | CSharpFunctionalExtensions              | 3.7.0   | MIT          | `Result`, `Maybe`                    |

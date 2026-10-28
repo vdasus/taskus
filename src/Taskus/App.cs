@@ -14,7 +14,8 @@ public static class ExitCode
 }
 
 /// <summary>Runs or validates one task file, or every task file in a folder.</summary>
-public sealed class App(ILogger log, SecretMask? secretMask = null, IFileSystem? fileSystem = null)
+/// <param name="unprotectSecrets">DPAPI on Windows: secrets must then be protected; null reads plain <c>secrets.yaml</c>.</param>
+public sealed class App(ILogger log, SecretMask? secretMask = null, IFileSystem? fileSystem = null, Func<byte[], byte[]>? unprotectSecrets = null)
 {
     private readonly SecretMask mask = secretMask ?? new SecretMask();
     private readonly IFileSystem fs = fileSystem ?? new FileSystem();
@@ -22,7 +23,7 @@ public sealed class App(ILogger log, SecretMask? secretMask = null, IFileSystem?
     public async Task<int> ExecuteAsync(string verb, string path, string secretsFile, bool dryRun, CancellationToken ct)
     {
         var files = TaskFiles(path);
-        var secrets = Secrets.Load(fs, secretsFile);
+        var secrets = Secrets.Load(fs, secretsFile, unprotectSecrets);
         if (Result.Combine("; ", files, secrets) is { IsFailure: true } failed)
         {
             log.Error("{Error}", failed.Error);

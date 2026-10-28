@@ -28,7 +28,15 @@ taskus schema                                 # JSON Schema of task files
 Exit codes: `0` success, `1` the run had errors, `2` a task file is invalid.
 
 Example tasks are in [examples/](examples). Copy `examples/secrets.yaml.example` to `secrets.yaml` next to
-`taskus.exe` and fill in the connection strings and SMTP settings.
+`taskus.exe`, fill in the connection strings and SMTP settings, and encrypt it:
+
+```
+taskus secrets protect      # secrets.yaml -> secrets.sec, readable only on this machine; secrets.yaml is deleted
+taskus secrets unprotect    # secrets.sec -> secrets.yaml for editing; protect again afterwards
+```
+
+On Windows `taskus run` reads only `secrets.sec` and stops with an error while `secrets.yaml` is present.
+`--current-user` limits decryption to the account that ran `protect`. Details: [Docs/design.md](Docs/design.md#secrets).
 
 Editor support: start a task file with the line below. VS Code (with the Red Hat YAML extension) and JetBrains
 IDEs then complete settings and mark unknown or missing ones.
@@ -64,7 +72,8 @@ Taskus-specific rules (which variables exist, when a value keeps its type) are i
 Windows builds are attached to [GitHub releases](https://github.com/vdasus/taskus/releases) in two kinds:
 `self-contained` needs nothing installed; `framework-dependent` is much smaller but needs the
 [.NET 10 runtime](https://dotnet.microsoft.com/download/dotnet/10.0). Unpack the zip,
-copy `examples/secrets.yaml.example` to `secrets.yaml` next to `taskus.exe`, and adjust the example tasks.
+copy `examples/secrets.yaml.example` to `secrets.yaml` next to `taskus.exe`, run `taskus secrets protect`, and
+adjust the example tasks.
 Versions follow [semantic versioning](https://semver.org); while the version is `0.x`, any release may break
 task files.
 

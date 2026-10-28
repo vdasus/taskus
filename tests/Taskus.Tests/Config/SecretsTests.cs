@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using System.IO.Abstractions.TestingHelpers;
+using System.Security.Cryptography;
 using AutoFixture;
 using FluentAssertions;
 using Taskus.Config;
@@ -82,5 +83,83 @@ public class SecretsTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeEmpty();
+    }
+
+    // Stands in for DPAPI on every OS; tests of the real one are in SecretsProtectionTests.
+    internal static byte[] Flip(byte[] data) => data.Select(b => (byte)~b).ToArray();
+
+    private static MockFileSystem Files(params string[] names) =>
+        new(names.ToDictionary(n => n, n => n.EndsWith(".sec") ? new MockFileData(Flip("pg: from-sec\n"u8.ToArray())) : new MockFileData("pg: from-yaml\n")));
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public void Load_Protected_ReadsOnlyTheProtectedFile()
+    {
+        var result = Secrets.Load(Files("secrets.sec"), "secrets.yaml", Flip);
+
+        result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error : "");
+        result.Value["pg"]!.GetValue<string>().Should().Be("from-sec");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public void Load_ProtectedButOnlyPlainFile_FailsAskingToProtect()
+    {
+        var result = Secrets.Load(Files("secrets.yaml"), "secrets.yaml", Flip);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().Be("secrets.yaml is not protected. Run 'taskus secrets protect' to replace it with secrets.sec");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public void Load_ProtectedAndBothFiles_FailsAskingToDeletePlainFile()
+    {
+        var result = Secrets.Load(Files("secrets.yaml", "secrets.sec"), "secrets.yaml", Flip);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().StartWith("Both secrets.sec and secrets.yaml exist. Delete the unprotected secrets.yaml");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Load_ProtectedFileFromAnotherMachine_FailsWithHint()
+    {
+        var result = Secrets.Load(Files("secrets.sec"), "secrets.yaml", _ => throw new CryptographicException());
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().Contain("cannot be decrypted").And.Contain("another machine");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Load_ProtectedAndNoFile_GivesNoSecrets()
+    {
+        var result = Secrets.Load(new MockFileSystem(), "secrets.yaml", Flip);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().BeEmpty();
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Load_WithoutProtectionAndBothFiles_ReadsPlainFile()
+    {
+        var result = Secrets.Load(Files("secrets.yaml", "secrets.sec"), "secrets.yaml");
+
+        result.Value["pg"]!.GetValue<string>().Should().Be("from-yaml");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Load_WithoutProtectionAndOnlyProtectedFile_FailsNamingWindows()
+    {
+        var result = Secrets.Load(Files("secrets.sec"), "secrets.yaml");
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().Contain("only on Windows");
     }
 }

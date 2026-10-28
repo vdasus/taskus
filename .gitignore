@@ -4,6 +4,7 @@
 
 # Passwords in plain text, kept next to the executable only.
 secrets.yaml
+secrets.sec
 
 # Build output
 bin/

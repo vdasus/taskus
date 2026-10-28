@@ -1,10 +1,12 @@
 using System.IO.Abstractions;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace Taskus.Config;
 
-/// <summary>Loads <c>secrets.yaml</c> and replaces <c>${secret:name}</c> references in a task tree.</summary>
+/// <summary>Loads <c>secrets.yaml</c> (or its protected copy <c>secrets.sec</c>) and replaces <c>${secret:name}</c> references in a task tree.</summary>
 public static partial class Secrets
 {
     [GeneratedRegex(@"\$\{secret:([^}]+)\}")]
@@ -12,19 +14,62 @@ public static partial class Secrets
 
     public static JsonObject None => [];
 
-    /// <summary>A missing file gives no secrets: tasks without references still run.</summary>
-    public static Result<JsonObject> Load(IFileSystem fs, string file)
+    /// <summary>The protected copy of <paramref name="file"/>: same name, extension <c>.sec</c>.</summary>
+    public static string ProtectedFile(string file) => Path.ChangeExtension(file, ".sec");
+
+    /// <summary>
+    /// Loads secrets from <paramref name="file"/> or its protected copy. With <paramref name="unprotect"/> (Windows)
+    /// only the protected copy is read, and a plain file next to it is an error. Without it (no DPAPI) the plain file
+    /// is read. No file gives no secrets: tasks without references still run.
+    /// </summary>
+    public static Result<JsonObject> Load(IFileSystem fs, string file, Func<byte[], byte[]>? unprotect = null)
     {
-        if (!fs.File.Exists(file))
+        var protectedFile = ProtectedFile(file);
+        var hasPlain = fs.File.Exists(file);
+        var hasProtected = fs.File.Exists(protectedFile);
+
+        if (unprotect is null)
+        {
+            if (hasPlain)
+                return Parse(fs.File.ReadAllText(file), file);
+            return hasProtected
+                ? Result.Failure<JsonObject>($"{protectedFile}: protected secrets can be read only on Windows; use {file} here")
+                : None;
+        }
+
+        if (hasPlain && hasProtected)
+            return Result.Failure<JsonObject>(
+                $"Both {protectedFile} and {file} exist. Delete the unprotected {file} (run 'taskus secrets protect' first if you changed it)");
+        if (hasPlain)
+            return Result.Failure<JsonObject>($"{file} is not protected. Run 'taskus secrets protect' to replace it with {protectedFile}");
+        if (!hasProtected)
             return None;
 
-        return YamlJson.Parse(fs.File.ReadAllText(file)).MapError(error => $"{file}: {error}").Bind(tree => tree switch
+        return Decrypt(fs, protectedFile, unprotect).Bind(text => Parse(text, protectedFile));
+    }
+
+    /// <summary>Reads a protected file as text; a file from another machine or account gives a failure, not an exception.</summary>
+    public static Result<string> Decrypt(IFileSystem fs, string protectedFile, Func<byte[], byte[]> unprotect)
+    {
+        try
+        {
+            return Encoding.UTF8.GetString(unprotect(fs.File.ReadAllBytes(protectedFile)));
+        }
+        catch (CryptographicException)
+        {
+            return Result.Failure<string>(
+                $"{protectedFile}: cannot be decrypted. It was protected on another machine, by another user account " +
+                "(--current-user), or it is damaged. Create the plain file again and run 'taskus secrets protect'");
+        }
+    }
+
+    public static Result<JsonObject> Parse(string text, string file) =>
+        YamlJson.Parse(text).MapError(error => $"{file}: {error}").Bind(tree => tree switch
         {
             null => Result.Success(None),
             JsonObject map => Result.Success(map),
             _ => Result.Failure<JsonObject>($"{file}: must be a mapping of name to value"),
         });
-    }
 
     /// <summary>Returns a copy of <paramref name="node"/> with every reference replaced.</summary>
     public static Result<JsonNode?> Resolve(JsonNode? node, JsonObject secrets)
