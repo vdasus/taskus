@@ -10,7 +10,7 @@ an HTTP API), convert each row, and put it into a sink (a database table, an Exc
 Each task is a YAML file. Taskus runs it manually or from Windows Task Scheduler: it checks the input,
 processes what it finds, reports the result, and exits.
 
-Status: version 0.3.3, second development iteration. Sources: `excel`, `postgres`, `http`. Sinks: `postgres`, `excel`, `smtp`, `http`.
+Status: version 0.4.0, second development iteration. Sources: `excel`, `postgres`, `http`. Sinks: `postgres`, `excel`, `smtp`, `http`.
 HTTP calls support retries and a rate limit.
 Design and task file reference: [Docs/design.md](Docs/design.md).
 
