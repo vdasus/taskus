@@ -121,7 +121,7 @@ written, so the next run writes them a second time unless the file is moved by h
 `processed` and `failed` are optional; a file without a target folder stays in place. A name clash in the target
 folder adds a timestamp to the file name.
 
-A `postgres` source is one unit: the result of `query`. An `http` source is one unit: one API response.
+A `postgres` or `odbc` source is one unit: the result of `query`. An `http` source is one unit: one API response.
 
 ### Units
 
@@ -165,11 +165,36 @@ The default is `onError: stop`.
 - `transaction: all` uses one transaction per unit (one input file). The first error, in mapping or in the
   database, rolls the unit back; the run goes on with the next unit unless `onError: stop`.
 
-Inserts use one prepared statement per unit. Columns are the mapped field names. Taskus reads the column types
+Inserts use one parameterised statement per unit. It is not prepared on the server: the parameter types come
+from each value. Columns are the mapped field names. Taskus reads the column types
 from the table and converts values to them: text to numbers, dates and booleans (invariant culture), Excel date
 numbers to dates, empty text to `null` for non-text columns. Dates without a time zone are taken as local time.
 
 Batches with a `batchSize` are not supported; add them when a task needs them.
+
+### ODBC source and sink
+
+`type: odbc` works like `postgres` with any database that has an ODBC driver: SQL Server, SQL Anywhere, Oracle,
+MySQL and others. The connection string names the driver or a DSN (full example: `examples/excel-to-odbc.yaml`):
+
+```yaml
+sink:
+  type: odbc
+  connection: ${secret:sa_main}    # Driver={SQL Anywhere 17};Host=db:2638;ServerName=main;UID=taskus;PWD=...
+  table: dba.clients
+```
+
+Taskus does not ship ODBC drivers. The driver must be installed on the machine that runs Taskus, with the same
+bitness as `taskus.exe` (64-bit); on Linux also unixODBC. The `query` is in the database's own SQL dialect.
+
+Compared with `postgres`, the `odbc` transport:
+
+- quotes table and column names with `"` (ANSI); MySQL needs `sql_mode=ANSI_QUOTES`;
+- passes dates as they are; there is no time zone conversion as for PostgreSQL `timestamptz`;
+- gets types such as JSON, arrays or intervals as text, depending on the driver;
+- reports driver errors as the driver words them (`ERROR [42P01] [...][ODBC ...]`).
+
+For PostgreSQL itself, `postgres` stays the better choice: Npgsql is built into `taskus.exe` and needs no driver.
 
 ### Excel sink
 
@@ -361,8 +386,8 @@ certificate) and `Disable` only on purpose for a local database. Send API tokens
 
 | Kind    | Types                               |
 |---------|-------------------------------------|
-| Sources | `excel`, `postgres`, `http`         |
-| Sinks   | `postgres`, `excel`, `smtp`, `http` |
+| Sources | `excel`, `postgres`, `odbc`, `http`         |
+| Sinks   | `postgres`, `odbc`, `excel`, `smtp`, `http` |
 
 Also: the run report, `run`, `validate`, `--dry-run`, HTTP retries and rate limit.
 
@@ -379,7 +404,7 @@ Third iteration (planned):
 - Decide whether `logExclude` should also accept nested paths (`address.city`) for `http` source rows.
 
 Not done yet, added when a task needs them: pagination for the `http` source, keeping the API response in the
-`http` sink, batched database inserts, other databases.
+`http` sink, batched database inserts.
 
 ## Solution layout
 
@@ -400,13 +425,18 @@ sink. File access goes through `IFileSystem` (System.IO.Abstractions), created o
 with `MockFileSystem`. Logging is the exception: Serilog and the configuration reader open their files themselves. A test checks that `schema/task.schema.json` matches the model; after changing `TaskOptions`, regenerate it
 with `taskus schema > schema/task.schema.json`.
 
+The database tests (`DatabaseTests`, category `Docker`) start PostgreSQL in Docker through Testcontainers and
+run the `postgres` and `odbc` transports against it; the `odbc` cases use psqlODBC. Without Docker or without
+the driver they are skipped, so building and testing Taskus needs neither. `TASKUS_DB_TESTS=required` turns a
+skip into a failure; the Linux CI job sets it and installs psqlODBC.
+
 Publishing:
 
 ```
 dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 ```
 
-Every dependency is managed code, so the result is `taskus.exe` plus `appsettings.json`, which stays outside the
+Every dependency is managed code (the ODBC driver itself is installed separately), so the result is `taskus.exe` plus `appsettings.json`, which stays outside the
 executable so it can be edited. Trimming is off. With `--self-contained false` the same command builds a
 framework-dependent `taskus.exe` that needs the .NET 10 runtime; releases ship both.
 
@@ -423,6 +453,7 @@ All dependencies are free and open source. Versions are pinned in `Directory.Pac
 | FluentValidation                        | 12.2.0  | Apache-2.0   | Task file rules                      |
 | Scriban                                 | 7.5.3   | BSD-2-Clause | Mapping expressions and templates    |
 | Npgsql                                  | 10.0.3  | PostgreSQL   | PostgreSQL source and sink           |
+| System.Data.Odbc                        | 10.0.14 | MIT          | ODBC source and sink                 |
 | MailKit                                 | 4.18.2  | MIT          | SMTP sink and report mail            |
 | MiniExcel                               | 1.46.0  | Apache-2.0   | Excel source and sink, streaming     |
 | CSharpFunctionalExtensions              | 3.7.0   | MIT          | `Result`, `Maybe`                    |
@@ -445,6 +476,7 @@ Tests:
 | NSubstitute                 | 5.3.0   | BSD-3-Clause |
 | FluentAssertions            | 7.2.2   | Apache-2.0   |
 | TestableIO.System.IO.Abstractions.TestingHelpers | 22.3.0 | MIT |
+| Testcontainers.PostgreSql   | 4.16.0  | MIT          |
 
 FluentAssertions is pinned to 7.x: version 8 and later use a commercial license. EPPlus is not used for the
 same reason. ClosedXML (MIT) is an alternative to MiniExcel if rich formatting is needed; it loads the whole

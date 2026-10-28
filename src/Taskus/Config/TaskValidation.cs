@@ -39,11 +39,13 @@ public static class TaskValidation
         {
             RuleFor(x => x.Source).SetInheritanceValidator(v => v
                 .Add(new ExcelSourceValidator())
-                .Add(new PostgresSourceValidator())
+                .Add(new DbSourceValidator<PostgresSourceOptions>())
+                .Add(new DbSourceValidator<OdbcSourceOptions>())
                 .Add(new HttpSourceValidator()));
             RuleFor(x => x.Sink).SetInheritanceValidator(v => v
                 .Add(new ExcelSinkValidator())
-                .Add(new PostgresSinkValidator())
+                .Add(new DbSinkValidator<PostgresSinkOptions>())
+                .Add(new DbSinkValidator<OdbcSinkOptions>())
                 .Add(new HttpSinkValidator()));
             RuleFor(x => x.Map).Custom((map, context) =>
             {
@@ -86,9 +88,9 @@ public static class TaskValidation
         }
     }
 
-    private sealed class PostgresSourceValidator : AbstractValidator<PostgresSourceOptions>
+    private sealed class DbSourceValidator<T> : AbstractValidator<T> where T : IDbSourceOptions
     {
-        public PostgresSourceValidator()
+        public DbSourceValidator()
         {
             RuleFor(x => x.Connection).NotEmpty().WithMessage("must not be empty");
             RuleFor(x => x.Query).NotEmpty().WithMessage("must not be empty");
@@ -105,9 +107,9 @@ public static class TaskValidation
         }
     }
 
-    private sealed class PostgresSinkValidator : AbstractValidator<PostgresSinkOptions>
+    private sealed class DbSinkValidator<T> : AbstractValidator<T> where T : IDbSinkOptions
     {
-        public PostgresSinkValidator()
+        public DbSinkValidator()
         {
             RuleFor(x => x.Connection).NotEmpty().WithMessage("must not be empty");
             RuleFor(x => x.Table).NotEmpty().WithMessage("must not be empty");

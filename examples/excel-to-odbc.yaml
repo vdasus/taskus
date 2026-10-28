@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/vdasus/taskus/main/schema/task.schema.json
+# Imports every .xlsx from the input folder into a SQL Anywhere table through ODBC.
+# Needs the SQL Anywhere ODBC driver (64-bit) on the machine; the connection string in secrets.yaml names it.
+# Any database with an ODBC driver works the same way: only the connection string and the table name change.
+# Sample input: examples/clients.xlsx, columns: Kliento Nr, Vardas, Pavardė, El. paštas, Suma, Sąskaitos data, Miestas.
+# Target table: dba.clients (client_code, first_name, last_name, email, amount, invoice_date).
+name: import-clients-odbc
+source:
+  type: excel
+  folder: C:\Taskus\in\clients-odbc
+  processed: C:\Taskus\in\clients-odbc\done
+  failed: C:\Taskus\in\clients-odbc\failed
+map:
+  client_code:  "{{ row['Kliento Nr'] | string.strip }}"
+  first_name:   "{{ row.Vardas }}"
+  last_name:    "{{ row['Pavardė'] }}"
+  email:        "{{ row['El. paštas'] | string.downcase }}"
+  amount:       "{{ row.Suma }}"                             # an empty cell stays empty: null in the table
+  invoice_date: "{{ row['Sąskaitos data'] }}"
+sink:
+  type: odbc
+  connection: ${secret:sa_main}
+  table: dba.clients       # quoted as "dba"."clients"
+  transaction: all         # one transaction per file: all rows or none
+onError: stop

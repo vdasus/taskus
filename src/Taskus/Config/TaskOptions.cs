@@ -105,9 +105,25 @@ public interface IHttpEndpointOptions
     double RateLimit { get; }
 }
 
+/// <summary>Settings shared by the database sources.</summary>
+public interface IDbSourceOptions
+{
+    string Connection { get; }
+    string Query { get; }
+}
+
+/// <summary>Settings shared by the database sinks.</summary>
+public interface IDbSinkOptions
+{
+    string Connection { get; }
+    string Table { get; }
+    TransactionScope Transaction { get; }
+}
+
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(ExcelSourceOptions), "excel")]
 [JsonDerivedType(typeof(PostgresSourceOptions), "postgres")]
+[JsonDerivedType(typeof(OdbcSourceOptions), "odbc")]
 [JsonDerivedType(typeof(HttpSourceOptions), "http")]
 public abstract record SourceOptions;
 
@@ -131,12 +147,22 @@ public sealed record ExcelSourceOptions : SourceOptions
 }
 
 [Description("The result of query is one unit.")]
-public sealed record PostgresSourceOptions : SourceOptions
+public sealed record PostgresSourceOptions : SourceOptions, IDbSourceOptions
 {
     [Description("Npgsql connection string. Usually ${secret:name}.")]
     public required string Connection { get; init; }
 
     [Description("SQL query; each result row is one row.")]
+    public required string Query { get; init; }
+}
+
+[Description("The result of query is one unit. Needs the database's ODBC driver on the machine.")]
+public sealed record OdbcSourceOptions : SourceOptions, IDbSourceOptions
+{
+    [Description("ODBC connection string, e.g. Driver={...};Server=...; or DSN=name. Usually ${secret:name}.")]
+    public required string Connection { get; init; }
+
+    [Description("SQL query in the database's dialect; each result row is one row.")]
     public required string Query { get; init; }
 }
 
@@ -171,6 +197,7 @@ public sealed record HttpSourceOptions : SourceOptions, IHttpEndpointOptions
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(ExcelSinkOptions), "excel")]
 [JsonDerivedType(typeof(PostgresSinkOptions), "postgres")]
+[JsonDerivedType(typeof(OdbcSinkOptions), "odbc")]
 [JsonDerivedType(typeof(SmtpSinkOptions), "smtp")]
 [JsonDerivedType(typeof(HttpSinkOptions), "http")]
 public abstract record SinkOptions;
@@ -192,9 +219,22 @@ public sealed record ExcelSinkOptions : SinkOptions
 }
 
 [Description("Inserts rows into a table; columns are the mapped field names.")]
-public sealed record PostgresSinkOptions : SinkOptions
+public sealed record PostgresSinkOptions : SinkOptions, IDbSinkOptions
 {
     [Description("Npgsql connection string. Usually ${secret:name}.")]
+    public required string Connection { get; init; }
+
+    [Description("Table name, optionally schema.table.")]
+    public required string Table { get; init; }
+
+    [Description("perRow (default): commit each row. all: one transaction per unit, rolled back on the first error.")]
+    public TransactionScope Transaction { get; init; } = TransactionScope.PerRow;
+}
+
+[Description("Inserts rows into a table; columns are the mapped field names. Needs the database's ODBC driver on the machine.")]
+public sealed record OdbcSinkOptions : SinkOptions, IDbSinkOptions
+{
+    [Description("ODBC connection string, e.g. Driver={...};Server=...; or DSN=name. Usually ${secret:name}.")]
     public required string Connection { get; init; }
 
     [Description("Table name, optionally schema.table.")]

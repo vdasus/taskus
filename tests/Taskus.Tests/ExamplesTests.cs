@@ -52,6 +52,25 @@ public class ExamplesTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public async Task ExcelToOdbc_SplitsNamesAndKeepsEmptyAmount()
+    {
+        var rows = await MapClientsAsync("excel-to-odbc.yaml");
+
+        rows.Should().HaveCount(3);
+        rows[0].Should().BeEquivalentTo(new Dictionary<string, object?>
+        {
+            ["client_code"] = "K-001",
+            ["first_name"] = "Jonas",
+            ["last_name"] = "Jonaitis",
+            ["email"] = "jonas.jonaitis@example.com",
+            ["amount"] = 120.5m,
+            ["invoice_date"] = new DateTime(2026, 10, 1),
+        });
+        rows[2]["amount"].Should().BeNull();
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task ExcelToApiPost_BuildsBodyFields()
     {
         var rows = await MapClientsAsync("excel-to-api-post.yaml");

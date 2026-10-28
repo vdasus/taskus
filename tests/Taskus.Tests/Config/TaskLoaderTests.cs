@@ -75,6 +75,29 @@ public class TaskLoaderTests
 
     [Fact]
     [Trait("Category", "Unit")]
+    public void Load_OdbcSourceAndSink_ReadsConnectionQueryAndTable()
+    {
+        var result = Load("""
+            source: { type: odbc, connection: "DSN=src", query: select 1 }
+            sink: { type: ODBC, connection: "Driver={SQL Anywhere 17};Host=db", table: dba.clients, transaction: all }
+            """);
+
+        result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error : "");
+        result.Value.Source.Should().Be(new OdbcSourceOptions { Connection = "DSN=src", Query = "select 1" });
+        result.Value.Sink.Should().Be(new OdbcSinkOptions { Connection = "Driver={SQL Anywhere 17};Host=db", Table = "dba.clients", Transaction = TransactionScope.All });
+    }
+
+    [Theory]
+    [Trait("Category", "Unit")]
+    [InlineData("source: { type: odbc, connection: '', query: q }\nsink: { type: excel, folder: y, file: z }\n", "source.connection: must not be empty")]
+    [InlineData("source: { type: excel, folder: x }\nsink: { type: odbc, connection: DSN=a, table: '' }\n", "sink.table: must not be empty")]
+    public void Load_OdbcEmptySetting_Fails(string yaml, string error)
+    {
+        Load(yaml).Error.Should().Contain(error);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
     public void Load_HttpSource_ReadsMethodCaseInsensitivelyAndNumbersFromText()
     {
         var result = Load("""
@@ -94,7 +117,7 @@ public class TaskLoaderTests
     [Trait("Priority", "High")]
     [InlineData("source: { type: excel, folder: x, procesed: y }\nsink: { type: excel, folder: y, file: z }\n", "source.procesed: unknown setting")]
     [InlineData("source: { type: excel, folder: x }\nsink: { type: excel, folder: y }\n", "sink: missing required setting 'file'")]
-    [InlineData("source: { type: ftp }\nsink: { type: excel, folder: y, file: z }\n", "source.type: unknown type 'ftp' (excel | postgres | http)")]
+    [InlineData("source: { type: ftp }\nsink: { type: excel, folder: y, file: z }\n", "source.type: unknown type 'ftp' (excel | postgres | odbc | http)")]
     [InlineData("source: { folder: x }\nsink: { type: excel, folder: y, file: z }\n", "source.type: is required")]
     [InlineData("source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z }\nmaxErrors: many\n", "maxErrors: must be a whole number")]
     [InlineData("source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z }\nonError: maybe\n", "onError: must be stop | continue")]

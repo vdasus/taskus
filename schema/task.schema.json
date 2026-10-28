@@ -82,6 +82,27 @@
           "additionalProperties": false
         },
         {
+          "description": "The result of query is one unit. Needs the database's ODBC driver on the machine.",
+          "properties": {
+            "type": {
+              "const": "odbc"
+            },
+            "connection": {
+              "description": "ODBC connection string, e.g. Driver={...};Server=...; or DSN=name. Usually ${secret:name}.",
+              "type": "string"
+            },
+            "query": {
+              "description": "SQL query in the database's dialect; each result row is one row.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connection",
+            "query"
+          ],
+          "additionalProperties": false
+        },
+        {
           "description": "Reads rows from one JSON response.",
           "properties": {
             "type": {
@@ -207,6 +228,34 @@
             },
             "connection": {
               "description": "Npgsql connection string. Usually ${secret:name}.",
+              "type": "string"
+            },
+            "table": {
+              "description": "Table name, optionally schema.table.",
+              "type": "string"
+            },
+            "transaction": {
+              "description": "perRow (default): commit each row. all: one transaction per unit, rolled back on the first error.",
+              "enum": [
+                "perRow",
+                "all"
+              ]
+            }
+          },
+          "required": [
+            "connection",
+            "table"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Inserts rows into a table; columns are the mapped field names. Needs the database's ODBC driver on the machine.",
+          "properties": {
+            "type": {
+              "const": "odbc"
+            },
+            "connection": {
+              "description": "ODBC connection string, e.g. Driver={...};Server=...; or DSN=name. Usually ${secret:name}.",
               "type": "string"
             },
             "table": {

@@ -2,15 +2,15 @@
 
 > **Warning: work in progress.** Taskus is under active development and is not ready for production use.
 > Task file format, command-line options and behaviour may change in any release without notice.
-> The PostgreSQL and SMTP transports have not yet been tested against real servers.
+> The SMTP transport has not yet been tested against a real server.
 
-A console tool for declarative data-transfer tasks: take data from a source (Excel files, a PostgreSQL query,
+A console tool for declarative data-transfer tasks: take data from a source (Excel files, a PostgreSQL or ODBC query,
 an HTTP API), convert each row, and put it into a sink (a database table, an Excel file, e-mail, an HTTP API).
 
 Each task is a YAML file. Taskus runs it manually or from Windows Task Scheduler: it checks the input,
 processes what it finds, reports the result, and exits.
 
-Status: version 0.4.0, second development iteration. Sources: `excel`, `postgres`, `http`. Sinks: `postgres`, `excel`, `smtp`, `http`.
+Status: version 0.4.0, second development iteration. Sources: `excel`, `postgres`, `odbc`, `http`. Sinks: `postgres`, `odbc`, `excel`, `smtp`, `http`.
 HTTP calls support retries and a rate limit.
 Design and task file reference: [Docs/design.md](Docs/design.md).
 

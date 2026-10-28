@@ -33,6 +33,7 @@
     <PackageReference Include="Polly.Core" />
     <PackageReference Include="Scriban" />
     <PackageReference Include="Serilog" />
+    <PackageReference Include="System.Data.Odbc" />
     <PackageReference Include="Serilog.Settings.Configuration" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
     <PackageReference Include="Serilog.Sinks.Console" />
