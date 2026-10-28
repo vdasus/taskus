@@ -4,6 +4,7 @@
 name: invoice-mail
 source:
   type: excel
+  # sheet: Lapas1             # without sheet the first sheet is read, whatever its name
   folder: C:\Taskus\in\mail
   processed: C:\Taskus\in\mail\done
   failed: C:\Taskus\in\mail\failed

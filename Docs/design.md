@@ -60,7 +60,7 @@ source:
   type: excel
   folder: C:\in\clients
   pattern: "*.xlsx"
-  sheet: Sheet1            # default: the first sheet
+  sheet: Sheet1            # omit to read the first sheet, whatever its name
   processed: C:\in\clients\done
   failed: C:\in\clients\failed
 map:
@@ -101,7 +101,9 @@ accepts them as quoted text.
 ### Folder sources
 
 A source with `folder` and `pattern` (default `*.xlsx`) processes each matching file separately; each file is
-one *unit*. The first sheet row holds the field names; `sheet` picks a sheet other than the first. Empty rows are
+one *unit*. The first sheet row holds the field names. Without `sheet` the first sheet (the leftmost tab in Excel) is
+read whatever its name, so files saved by Excel in any language (`Sheet1`, `Lapas1`) work; `sheet` picks a sheet
+by name. Empty rows are
 skipped, and row numbers in the report are sheet row numbers. Excel lock files (`~$*.xlsx`) are ignored.
 
 When nothing matches, the run ends with exit code `0` and writes nothing.
@@ -200,7 +202,9 @@ For PostgreSQL itself, `postgres` stays the better choice: Npgsql is built into 
 
 The file name is a Scriban template; `unit` holds the input file name without extension (`query` for a
 database source). `overwrite: true|false` (default `false`) controls an existing file; with `false` the unit fails
-before reading, and the input stays in place. `sheet` names the sheet (default `Sheet1`). Two units of one run
+before reading, and the input stays in place. `sheet` names the sheet (default `Sheet1`). The sink always writes a
+new file, so the name is exactly `sheet` and does not depend on the language of Excel that opens it; set
+`sheet: Lapas1` for a Lithuanian name. Two units of one run
 cannot write the same file, even with `overwrite: true`: the second unit fails and its input stays in place, so a
 folder source with several files needs `{{ unit }}` in the file name.
 

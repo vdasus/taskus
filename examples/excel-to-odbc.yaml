@@ -7,6 +7,7 @@
 name: import-clients-odbc
 source:
   type: excel
+  # sheet: Lapas1             # without sheet the first sheet is read, whatever its name
   folder: C:\Taskus\in\clients-odbc
   processed: C:\Taskus\in\clients-odbc\done
   failed: C:\Taskus\in\clients-odbc\failed

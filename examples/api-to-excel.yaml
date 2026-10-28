@@ -25,6 +25,7 @@ sink:
   type: excel
   folder: C:\Taskus\out
   file: "clients_{{ date.now | date.to_string '%Y%m%d_%H%M' }}.xlsx"
+  # sheet: Lapas1             # default Sheet1; a new file always gets exactly this name
 onError: continue
 report:
   folder: C:\Taskus\reports

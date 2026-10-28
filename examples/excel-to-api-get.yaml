@@ -5,6 +5,7 @@
 name: api-get
 source:
   type: excel
+  # sheet: Lapas1             # without sheet the first sheet is read, whatever its name
   folder: C:\Taskus\in\clients
   processed: C:\Taskus\in\clients\done
   failed: C:\Taskus\in\clients\failed

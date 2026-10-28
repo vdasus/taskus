@@ -5,6 +5,7 @@
 name: import-clients
 source:
   type: excel
+  # sheet: Lapas1             # without sheet the first sheet is read, whatever its name
   folder: C:\Taskus\in\clients
   pattern: "*.xlsx"
   processed: C:\Taskus\in\clients\done
