@@ -13,3 +13,6 @@ publish/
 .vs/
 .idea/
 TestResults/
+*.ncrunchsolution
+.NCrunch_*/
+*.ncrunchsolution.user
