@@ -1,4 +1,5 @@
 using Optionus;
+using System.Reflection;
 using Serilog;
 using Serilog.Events;
 using Taskus;
@@ -9,9 +10,12 @@ var help = false;
 var secretsFile = Path.Combine(AppContext.BaseDirectory, "secrets.yaml");
 var logFolder = Path.Combine(AppContext.BaseDirectory, "logs");
 LogEventLevel? logLevel = null;
+// The SDK appends "+<commit>" to the informational version; the release number is enough here.
+var version = typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0];
 
 var options = new OptionSet
 {
+    $"taskus {version}",
     "Usage: taskus run|validate PATH [OPTIONS]",
     "       taskus schema",
     "PATH is a task file or a folder of task files (*.yaml, *.yml).",
@@ -56,6 +60,7 @@ if (help || arguments.Count != 2 || arguments[0] is not ("run" or "validate"))
 
 var mask = new SecretMask();
 Log.Logger = Logging.Create(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), logFolder, DateTime.Now, mask, logLevel);
+Log.Information("taskus {Version}", version);
 
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
@@ -66,7 +71,8 @@ Console.CancelKeyPress += (_, e) =>
 
 try
 {
-    return await new App(Log.Logger, mask).ExecuteAsync(arguments[0], arguments[1], secretsFile, dryRun, cts.Token);
+    return await new App(Log.Logger, mask)
+        .ExecuteAsync(arguments[0], arguments[1], secretsFile, dryRun, cts.Token);
 }
 catch (OperationCanceledException)
 {
