@@ -8,7 +8,7 @@ public class LoggingTests
 {
     private static readonly DateTime Started = new(2026, 10, 27, 10, 15, 0);
 
-    // The appsettings.json that ships next to taskus.exe; the build copies it to the test output.
+    // The appsettings.json that ships next to taskus.exe; the test project copies it to the test output.
     private static readonly string ShippedSettings = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
 
     [Fact]

@@ -13,13 +13,7 @@ public class ExamplesTests
 {
     private static readonly FileSystem Fs = new();
 
-    private static string Examples()
-    {
-        var folder = new DirectoryInfo(AppContext.BaseDirectory);
-        while (folder is not null && !File.Exists(Path.Combine(folder.FullName, "Taskus.slnx")))
-            folder = folder.Parent;
-        return Path.Combine(folder!.FullName, "examples");
-    }
+    private static string Examples() => Path.Combine(AppContext.BaseDirectory, "examples");
 
     private static RowMapper Mapper(string example)
     {

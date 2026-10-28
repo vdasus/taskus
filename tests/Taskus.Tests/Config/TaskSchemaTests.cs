@@ -6,13 +6,8 @@ namespace Taskus.Tests.Config;
 
 public class TaskSchemaTests
 {
-    private static string RepoRoot()
-    {
-        var folder = new DirectoryInfo(AppContext.BaseDirectory);
-        while (folder is not null && !File.Exists(Path.Combine(folder.FullName, "Taskus.slnx")))
-            folder = folder.Parent;
-        return folder?.FullName ?? throw new InvalidOperationException("Taskus.slnx not found above the test folder");
-    }
+    // examples/ and schema/ are copied next to the tests by the test project.
+    private static string RepoRoot() => AppContext.BaseDirectory;
 
     [Fact]
     [Trait("Category", "Unit")]

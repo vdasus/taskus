@@ -28,4 +28,11 @@
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
 
+  <!-- Copied next to the tests, so runners that build in a copy of the project (NCrunch) find them too. -->
+  <ItemGroup>
+    <None Include="..\..\examples\**" Link="examples\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Taskus\appsettings.json" Link="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\schema\task.schema.json" Link="schema\task.schema.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
