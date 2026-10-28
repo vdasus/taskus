@@ -40,12 +40,24 @@ public sealed class DbSource(SqlDialect dialect, string connection, string query
         command.CommandText = query;
         await using var reader = await command.ExecuteReaderAsync(ct);
         var number = 0;
-        while (await reader.ReadAsync(ct))
+        var finished = false;
+        try
         {
-            var row = new Dictionary<string, object?>(reader.FieldCount, StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < reader.FieldCount; i++)
-                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            yield return new SourceRow(++number, row);
+            while (await reader.ReadAsync(ct))
+            {
+                var row = new Dictionary<string, object?>(reader.FieldCount, StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < reader.FieldCount; i++)
+                    row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                yield return new SourceRow(++number, row);
+            }
+
+            finished = true;
+        }
+        finally
+        {
+            // A run that stopped early: closing the reader would otherwise read every remaining row.
+            if (!finished)
+                command.Cancel();
         }
 
         log.Debug("Query returned {RowCount} rows", number);
@@ -86,6 +98,8 @@ public sealed class DbSink(SqlDialect dialect, string connection, string table, 
         {
             try
             {
+                if (insert is null && row.Keys.FirstOrDefault(UnsafeName) is { } unsafeName)
+                    return Result.Failure($"field name '{unsafeName}' must not contain \", \\ or control characters");
                 insert ??= await InsertAsync(row.Keys.ToList(), ct);
                 if (row.Count != columns.Count || columns.Any(c => !row.ContainsKey(c.Name)))
                     return Result.Failure($"fields differ from the first row: {string.Join(", ", row.Keys)}");
@@ -122,15 +136,21 @@ public sealed class DbSink(SqlDialect dialect, string connection, string table, 
 
         public async ValueTask DisposeAsync()
         {
-            if (insert is not null)
-                await insert.DisposeAsync();
-            if (tx is not null)
+            try
             {
-                await tx.DisposeAsync(); // rolls back when not committed
-                if (!committed)
-                    log.Debug("Rolled back inserts into {Table}", table);
+                if (insert is not null)
+                    await insert.DisposeAsync();
+                if (tx is not null)
+                {
+                    await tx.DisposeAsync(); // rolls back when not committed
+                    if (!committed)
+                        log.Debug("Rolled back inserts into {Table}", table);
+                }
             }
-            await db.DisposeAsync();
+            finally
+            {
+                await db.DisposeAsync(); // also when a broken connection makes the rollback throw
+            }
         }
 
         private async Task<DbCommand> InsertAsync(List<string> fields, CancellationToken ct)
@@ -158,6 +178,9 @@ public sealed class DbSink(SqlDialect dialect, string connection, string table, 
             command.Transaction = tx;
             return command;
         }
+
+        // Field names can come from Excel headers. Without ANSI_QUOTES, MySQL reads "..." as a string with \ escapes.
+        private static bool UnsafeName(string name) => name.Any(c => c is '"' or '\\' || char.IsControl(c));
 
         // ANSI quotes: PostgreSQL, SQL Server, Oracle, SQL Anywhere. MySQL needs sql_mode ANSI_QUOTES.
         private static string Quote(string identifier) => $"\"{identifier.Replace("\"", "\"\"")}\"";

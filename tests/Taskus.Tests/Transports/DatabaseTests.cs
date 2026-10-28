@@ -115,6 +115,38 @@ public class DatabaseTests(PostgresContainer db) : IClassFixture<PostgresContain
             (await session.WriteAsync(Row("K-1", "1", null, null), Ct)).Error.Should().Contain("no_such_table");
     }
 
+    [Theory]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Docker")]
+    [InlineData("postgres")]
+    [InlineData("odbc")]
+    public async Task Sink_FieldNameWithQuoteOrBackslash_FailsTheRow(string kind)
+    {
+        var (dialect, connection) = await ConnectAsync(kind);
+        var table = await CreateTableAsync();
+        var row = new Dictionary<string, object?> { ["code\\\" , (select 1) -- "] = "x" };
+
+        await using var session = (await new DbSink(dialect, connection, table, TransactionScope.PerRow, Logger.None).OpenAsync("unit", Ct)).Value;
+
+        (await session.WriteAsync(row, Ct)).Error.Should().StartWith("field name 'code\\\" , (select 1) -- ' ");
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Docker")]
+    public async Task Source_StoppedEarly_DoesNotReadTheRestOfTheResult()
+    {
+        var (dialect, connection) = await ConnectAsync("postgres");
+        var rows = new DbSource(dialect, connection, "select g from generate_series(1, 20000000) g", Logger.None).Units().Single().Rows;
+
+        var enumerator = rows.GetAsyncEnumerator(Ct);
+        (await enumerator.MoveNextAsync()).Should().BeTrue();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        await enumerator.DisposeAsync();
+
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2), "disposing must not read the remaining rows");
+    }
+
     private async Task<(SqlDialect Dialect, string Connection)> ConnectAsync(string kind)
     {
         Assert.SkipWhen(db.Connection is null, db.SkipReason);

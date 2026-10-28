@@ -12,6 +12,8 @@ public class SecretMaskTests
         {
             ["pg_main"] = "Host=db;Username=taskus;Password=pg-pass-1",
             ["api_token"] = "tok-123456",
+            ["sa_main"] = "Driver={SQL Anywhere 17};UID=taskus;PWD={odbc;pass-3}",
+            ["pg_quoted"] = "Host=db;Password=\"pg;pass-4\"",
             ["smtp_main"] = new JsonObject
             {
                 ["server"] = "smtp.example.com",
@@ -30,6 +32,8 @@ public class SecretMaskTests
     [InlineData("auth with pg-pass-1", "auth with ***")]
     [InlineData("GET http://x/api?key=tok-123456", "GET http://x/api?key=***")]
     [InlineData("login mail-pass-2", "login ***")]
+    [InlineData("auth with odbc;pass-3", "auth with ***")]
+    [InlineData("auth with pg;pass-4", "auth with ***")]
     public void Apply_MasksSecretValues(string text, string expected)
     {
         Mask().Apply(text).Should().Be(expected);

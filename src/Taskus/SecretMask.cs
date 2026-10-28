@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Text.Json.Nodes;
 using Serilog.Core;
 using Serilog.Events;
@@ -9,7 +10,7 @@ namespace Taskus;
 /// </summary>
 /// <remarks>
 /// Masked: every top-level text secret (connection strings, tokens), values of sensitive keys inside secret
-/// mappings (<c>password</c>, <c>token</c>, ...), and <c>Password=</c> parts of connection strings.
+/// mappings (<c>password</c>, <c>token</c>, ...), and <c>Password=</c> / <c>PWD=</c> parts of connection strings.
 /// Other values of a secret mapping, such as an SMTP server or port, stay readable. Values shorter than
 /// four characters are not masked: they would hide ordinary numbers and words. Exception texts logged with a
 /// stack trace are not masked.
@@ -65,11 +66,10 @@ public sealed class SecretMask : ILogEventEnricher
             case JsonValue value when value.TryGetValue<string>(out var text):
                 if (topLevel || IsSensitive(key))
                     AddValue(text, found);
-                foreach (var part in text.Split(';'))
+                foreach (var (part, partValue) in ConnectionStringPairs(text))
                 {
-                    var pair = part.Split('=', 2);
-                    if (pair.Length == 2 && IsSensitive(pair[0].Trim()))
-                        AddValue(pair[1].Trim(), found);
+                    if (IsSensitive(part))
+                        AddValue(partValue, found);
                 }
 
                 break;
@@ -81,6 +81,31 @@ public sealed class SecretMask : ILogEventEnricher
                 foreach (var item in list)
                     Collect(key, item, topLevel: false, found);
                 break;
+        }
+    }
+
+    // Standard rules read Password="a;b", ODBC rules read PWD={a;b}; a text that is no connection string gives nothing.
+    private static IEnumerable<(string Key, string Value)> ConnectionStringPairs(string text)
+    {
+        foreach (var odbc in new[] { false, true })
+        {
+            var builder = new DbConnectionStringBuilder(odbc);
+            try
+            {
+                builder.ConnectionString = text;
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+
+            foreach (string key in builder.Keys)
+            {
+                var value = Convert.ToString(builder[key]) ?? "";
+                yield return (key, value);
+                if (value.Length > 1 && value[0] == '{' && value[^1] == '}')
+                    yield return (key, value[1..^1]);
+            }
         }
     }
 
