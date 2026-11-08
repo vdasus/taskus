@@ -224,7 +224,8 @@ sink:
 ### SMTP sink
 
 Sends one e-mail per row. Mapped fields: `to` (several addresses separated by `,` or `;`), `subject`, `body`,
-optional `cc`. `html: true` sends the body as HTML. Server settings come from the task's `smtp` section.
+optional `cc`. `html: true` sends the body as HTML; Taskus does not escape values in it, so put row values through
+`html.escape` (`{{ row.name | html.escape }}`), or a value such as `<a href="...">` becomes a working link in the mail. Server settings come from the task's `smtp` section.
 With a `user`, the connection must be encrypted: TLS from the start on port 465, STARTTLS on any other port; a
 server without STARTTLS fails instead of receiving the password in plain text. An anonymous relay may run without
 encryption. The same applies to the report mail.
@@ -251,7 +252,8 @@ sink:
 ```
 
 - `url` is a template; `row` in it is the mapped row, e.g. `https://example.com/api/{{ row.id | html.url_encode }}`.
-  The result must be an absolute `http` or `https` URL.
+  The result must be an absolute `http` or `https` URL. Values are not encoded for you: without `html.url_encode`, a value such as
+  `7/../admin?x=1` changes the path or the query of the call.
 - POST, PUT and PATCH send the mapped row as a JSON object (`{"id":101}`); GET and DELETE send no body.
 - `headers` go on every request; `Content-Type` replaces the default `application/json`.
 - Any 2xx status is success. Other statuses, network errors and time-outs fail the row; the error message holds
@@ -312,10 +314,11 @@ source:
 - Logging is configured in the `Serilog` section of `appsettings.json` next to the executable (format of
   Serilog.Settings.Configuration). The shipped file writes:
   - to the console, `Information` and above;
-  - a text log per run, `taskus_<yyyyMMdd_HHmmss>.log`;
-  - a JSON log per run, `taskus_<yyyyMMdd_HHmmss>.json`: one JSON object per line (Serilog `JsonFormatter`),
+  - a text log per run, `taskus_<yyyyMMdd_HHmmss>_<process id>.log`;
+  - a JSON log per run, `taskus_<yyyyMMdd_HHmmss>_<process id>.json`: one JSON object per line (Serilog `JsonFormatter`),
     with the message template and its properties as separate fields, for log tools and scripts.
-- In a sink `path`, `{run}` becomes the run start time. A relative path resolves against the log folder: `logs`
+- In a sink `path`, `{run}` becomes the run start time and the process id, so tasks that Task Scheduler starts in
+  the same second do not share a log file (Windows would let only the first one write it). A relative path resolves against the log folder: `logs`
   next to the executable, or the folder given by `--logs`. An absolute path is used as is.
 - Sinks, levels and output templates change in `appsettings.json` without a rebuild. The executable includes the
   Console and File sinks; another sink package needs a rebuild with that package referenced.
