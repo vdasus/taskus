@@ -17,6 +17,8 @@ public sealed class ExcelSource(IFileSystem fs, string folder, string pattern, s
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
         log.Debug("{FileCount} files match {Pattern} in {Folder}", files.Count, pattern, folder);
+        if (processed is null && files.Count > 0)
+            log.Warning("source.processed is not set: completed files stay in {Folder} and the next run writes their rows again", folder);
         return files.Select(file => new SourceUnit(fs.Path.GetFileName(file), Read(file).ToAsyncEnumerable(), done => Move(file, done)));
     }
 
