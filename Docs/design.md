@@ -120,7 +120,9 @@ If the move itself fails (no rights on the target folder, the file is locked), t
 "input not moved, the next run reads it again" and the run goes on with the next file. The rows are already
 written, so the next run writes them a second time unless the file is moved by hand first.
 
-`processed` and `failed` are optional; a file without a target folder stays in place. A name clash in the target
+`processed` and `failed` are optional; a file without a target folder stays in place. Without `processed`, the next
+run reads a completed file again and writes its rows a second time, so each run with matching files logs a warning;
+leave it out only for tasks that are run by hand. A name clash in the target
 folder adds a timestamp to the file name.
 
 A `postgres` or `odbc` source is one unit: the result of `query`. An `http` source is one unit: one API response.
@@ -264,6 +266,9 @@ The `http` source and sink share these settings.
 
 - Without a `retry` section there are no retries. With it, network errors, time-outs and statuses 408, 429 and
   5xx are retried `attempts` times. Other 4xx statuses mean the request itself is wrong and are not retried.
+- POST and PATCH are not idempotent: after a time-out, a lost answer or a 500, 502 or 504 the server may already have
+  done the work, and a retry would do it twice. These methods retry only when the request surely was not processed:
+  the connection could not be made, or the status is 408, 429 or 503.
 - The delay doubles with every attempt (exponential backoff with jitter), starting at `delay` seconds.
   A `Retry-After` header from the server takes precedence, capped at 60 seconds so a single response cannot
   stall a scheduled run.
