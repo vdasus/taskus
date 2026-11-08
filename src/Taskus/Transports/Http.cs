@@ -120,6 +120,8 @@ public sealed class HttpEndpoint
     }
 
     // Retries network errors, time-outs, 408, 429 and 5xx. Other 4xx mean the request itself is wrong.
+    // POST and PATCH are not idempotent: after a time-out, a dropped answer or a 500/502/504 the server may have
+    // done the work, and a retry would do it twice. They retry only when the request surely was not processed.
     private static RetryStrategyOptions<HttpResponseMessage> RetryStrategy(RetryOptions retry, HttpMethod method, ILogger log) => new()
     {
         MaxRetryAttempts = retry.Attempts,
@@ -127,9 +129,10 @@ public sealed class HttpEndpoint
         BackoffType = DelayBackoffType.Exponential,
         UseJitter = true,
         ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
-            .Handle<HttpRequestException>()
-            .Handle<TaskCanceledException>(ex => ex.InnerException is TimeoutException)
-            .HandleResult(r => r.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests || (int)r.StatusCode >= 500),
+            .Handle<HttpRequestException>(ex => IsIdempotent(method) || NotSent(ex))
+            .Handle<TaskCanceledException>(ex => IsIdempotent(method) && ex.InnerException is TimeoutException)
+            .HandleResult(r => r.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable
+                || (IsIdempotent(method) && (int)r.StatusCode >= 500)),
         DelayGenerator = args => ValueTask.FromResult(RetryAfter(args.Outcome.Result)),
         OnRetry = args =>
         {
@@ -139,6 +142,12 @@ public sealed class HttpEndpoint
             return ValueTask.CompletedTask;
         },
     };
+
+    private static bool IsIdempotent(HttpMethod method) => method != HttpMethod.Post && method != HttpMethod.Patch;
+
+    // The connection failed before the request went out, so the server never saw it.
+    private static bool NotSent(HttpRequestException ex) =>
+        ex.HttpRequestError is HttpRequestError.NameResolutionError or HttpRequestError.ConnectionError or HttpRequestError.SecureConnectionError;
 
     // The server's Retry-After wins over the backoff, capped so one answer cannot stall a scheduled run.
     private static TimeSpan? RetryAfter(HttpResponseMessage? response)

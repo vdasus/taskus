@@ -187,7 +187,7 @@ public sealed record HttpSourceOptions : SourceOptions, IHttpEndpointOptions
     [Description("Seconds per attempt. Default 100.")]
     public double Timeout { get; init; } = 100;
 
-    [Description("Retry network errors, time-outs, 408, 429 and 5xx. Omit for no retries.")]
+    [Description("Retry network errors, time-outs, 408, 429 and 5xx; POST and PATCH retry only failed connections, 408, 429 and 503. Omit for no retries.")]
     public RetryOptions? Retry { get; init; }
 
     [Description("Requests per second. 0 (default): no limit.")]
@@ -266,7 +266,7 @@ public sealed record HttpSinkOptions : SinkOptions, IHttpEndpointOptions
     [Description("Seconds per attempt. Default 100.")]
     public double Timeout { get; init; } = 100;
 
-    [Description("Retry network errors, time-outs, 408, 429 and 5xx. Omit for no retries.")]
+    [Description("Retry network errors, time-outs, 408, 429 and 5xx; POST and PATCH retry only failed connections, 408, 429 and 503. Omit for no retries.")]
     public RetryOptions? Retry { get; init; }
 
     [Description("Requests per second. 0 (default): no limit.")]

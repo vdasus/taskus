@@ -143,12 +143,51 @@ public class HttpSinkTests
     [Trait("Category", "Unit")]
     public async Task Retry_NetworkError_IsRetried()
     {
-        var handler = new FakeHandler(call => call == 1 ? throw new HttpRequestException("connection refused") : Status(HttpStatusCode.OK));
+        var handler = new FakeHandler(call => call == 1
+            ? throw new HttpRequestException(HttpRequestError.ConnectionError, "connection refused")
+            : Status(HttpStatusCode.OK));
         var sink = Create(handler, new() { Url = Api, Retry = Retry(1) });
 
         var result = await WriteAsync(sink, new Dictionary<string, object?> { ["id"] = 1 });
 
         result.IsSuccess.Should().BeTrue();
+        handler.Calls.Should().HaveCount(2);
+    }
+
+    public static TheoryData<string, Func<int, HttpResponseMessage>> MaybeProcessed => new()
+    {
+        { "500", _ => Status(HttpStatusCode.InternalServerError) },
+        { "504", _ => Status(HttpStatusCode.GatewayTimeout) },
+        { "answer lost", _ => throw new HttpRequestException(HttpRequestError.ResponseEnded, "response ended") },
+        { "time-out", _ => throw new TaskCanceledException("timed out", new TimeoutException()) },
+    };
+
+    [Theory]
+    [MemberData(nameof(MaybeProcessed))]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public async Task Retry_PostThatMayHaveBeenProcessed_IsNotRetried(string failure, Func<int, HttpResponseMessage> respond)
+    {
+        var handler = new FakeHandler(respond);
+        var sink = Create(handler, new() { Url = Api, Retry = Retry(3) });
+
+        var result = await WriteAsync(sink, new Dictionary<string, object?> { ["id"] = 1 });
+
+        result.IsFailure.Should().BeTrue();
+        handler.Calls.Should().ContainSingle("a retried POST after a {0} could write the row twice", failure);
+    }
+
+    [Theory]
+    [MemberData(nameof(MaybeProcessed))]
+    [Trait("Category", "Unit")]
+    public async Task Retry_PutThatMayHaveBeenProcessed_IsRetried(string failure, Func<int, HttpResponseMessage> respond)
+    {
+        var handler = new FakeHandler(call => call == 1 ? respond(call) : Status(HttpStatusCode.OK));
+        var sink = Create(handler, new() { Method = HttpMethodName.Put, Url = Api, Retry = Retry(1) });
+
+        var result = await WriteAsync(sink, new Dictionary<string, object?> { ["id"] = 1 });
+
+        result.IsSuccess.Should().BeTrue("PUT is idempotent, so a retry after a {0} is safe", failure);
         handler.Calls.Should().HaveCount(2);
     }
 

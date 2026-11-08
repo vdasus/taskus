@@ -148,7 +148,7 @@
               "type": "number"
             },
             "retry": {
-              "description": "Retry network errors, time-outs, 408, 429 and 5xx. Omit for no retries.",
+              "description": "Retry network errors, time-outs, 408, 429 and 5xx; POST and PATCH retry only failed connections, 408, 429 and 503. Omit for no retries.",
               "type": [
                 "object",
                 "null"
@@ -321,7 +321,7 @@
               "type": "number"
             },
             "retry": {
-              "description": "Retry network errors, time-outs, 408, 429 and 5xx. Omit for no retries.",
+              "description": "Retry network errors, time-outs, 408, 429 and 5xx; POST and PATCH retry only failed connections, 408, 429 and 503. Omit for no retries.",
               "type": [
                 "object",
                 "null"
