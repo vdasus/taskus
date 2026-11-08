@@ -43,7 +43,8 @@ public static class Reporter
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            log.Error(ex, "{Task}: report failed", task.Name);
+            log.Error("{Task}: report failed: {Error}", task.Name, ex.Message);
+            log.Debug("{Task}: {Details}", task.Name, ex.ToString()); // as a property, so secrets in the text are masked
             return Result.Failure($"report: {ex.Message}");
         }
     }

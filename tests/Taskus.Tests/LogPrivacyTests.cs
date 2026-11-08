@@ -51,6 +51,32 @@ public class LogPrivacyTests
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Priority", "High")]
+    public async Task SecretInFailedSourceUrl_NeverReachesLog()
+    {
+        using var temp = new TempFolder();
+        var secrets = temp.Write("secrets.yaml", $"api_token: {Token}\n");
+        // The failed source call throws; the runner logs that exception, whose text quotes the URL.
+        var task = temp.Write("task.yaml", $$$"""
+            source:
+              type: http
+              method: GET
+              url: "http://127.0.0.1:{{{ClosedPort()}}}/api?key=${secret:api_token}"
+            sink: { type: excel, folder: {{{temp.File("out")}}}, file: out.xlsx }
+            report: { when: never }
+            """);
+        var sink = new CollectingSink();
+        var mask = new SecretMask();
+
+        var exit = await new App(sink.Logger(mask), mask).ExecuteAsync("run", task, secrets, dryRun: false, TestContext.Current.CancellationToken);
+
+        exit.Should().Be(ExitCode.Errors);
+        sink.Text.Should().Contain("key=***").And.NotContain(Token);
+        sink.Events.Should().OnlyContain(e => e.Exception == null, "exception objects bypass the secret mask");
+    }
+
+    [Fact]
     [Trait("Category", "Unit")]
     [Trait("Priority", "High")]
     public async Task LogExclude_HidesFieldValuesInRowLogs()

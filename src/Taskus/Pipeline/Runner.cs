@@ -45,7 +45,8 @@ public sealed class Runner(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             report.Failure = ex.Message;
-            log.Error(ex, "{Task}: run failed", task);
+            log.Error("{Task}: run failed: {Error}", task, ex.Message);
+            log.Debug("{Task}: {Details}", task, ex.ToString()); // as a property, so secrets in the text are masked
         }
 
         report.Finished = DateTime.Now;
@@ -114,7 +115,8 @@ public sealed class Runner(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             report.Failure = ex.Message;
-            log.Error(ex, "{Task}: {Unit} failed", task, unit.Name);
+            log.Error("{Task}: {Unit} failed: {Error}", task, unit.Name, ex.Message);
+            log.Debug("{Task}: {Unit} {Details}", task, unit.Name, ex.ToString());
             stopRun = onError == ErrorPolicy.Stop;
         }
         finally
@@ -134,7 +136,7 @@ public sealed class Runner(
                 // The rows are written but the input stays: the next run reads it again. Say so loudly.
                 report.Completed = false;
                 report.Failure = $"{(report.Failure is null ? "" : report.Failure + "; ")}input not moved, the next run reads it again: {ex.Message}";
-                log.Error(ex, "{Task}: {Unit} input not moved; the next run reads it again", task, unit.Name);
+                log.Error("{Task}: {Unit} input not moved; the next run reads it again: {Error}", task, unit.Name, ex.Message);
             }
         }
 

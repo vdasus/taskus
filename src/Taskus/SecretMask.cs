@@ -12,8 +12,8 @@ namespace Taskus;
 /// Masked: every top-level text secret (connection strings, tokens), values of sensitive keys inside secret
 /// mappings (<c>password</c>, <c>token</c>, ...), and <c>Password=</c> / <c>PWD=</c> parts of connection strings.
 /// Other values of a secret mapping, such as an SMTP server or port, stay readable. Values shorter than
-/// four characters are not masked: they would hide ordinary numbers and words. Exception texts logged with a
-/// stack trace are not masked.
+/// four characters are not masked: they would hide ordinary numbers and words. Exception objects attached to a
+/// log event are not masked, so Taskus logs exception texts as properties instead.
 /// </remarks>
 public sealed class SecretMask : ILogEventEnricher
 {

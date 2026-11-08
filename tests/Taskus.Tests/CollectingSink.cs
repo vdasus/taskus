@@ -4,12 +4,12 @@ using Serilog.Events;
 
 namespace Taskus.Tests;
 
-/// <summary>Keeps log events in memory; <see cref="Text"/> holds every message and property value.</summary>
+/// <summary>Keeps log events in memory; <see cref="Text"/> holds every message, property value and exception.</summary>
 public sealed class CollectingSink : ILogEventSink
 {
     public List<LogEvent> Events { get; } = [];
 
-    public string Text => string.Join("\n", Events.Select(e => e.RenderMessage() + " " + string.Join(" ", e.Properties.Values)));
+    public string Text => string.Join("\n", Events.Select(e => e.RenderMessage() + " " + string.Join(" ", e.Properties.Values) + " " + e.Exception));
 
     public void Emit(LogEvent logEvent) => Events.Add(logEvent);
 
