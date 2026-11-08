@@ -10,14 +10,15 @@ namespace Taskus;
 public static class Logging
 {
     /// <remarks>
-    /// In every sink <c>path</c>, <c>{run}</c> becomes the run start time, so each run gets its own files.
+    /// In every sink <c>path</c>, <c>{run}</c> becomes the run start time and the process id, so each run gets its own files.
     /// A relative path resolves against <paramref name="logFolder"/>. <paramref name="level"/>, when given,
     /// replaces the minimum level of the settings file. Without the settings file the logger writes to the
     /// console and to one text file per run.
     /// </remarks>
     public static Logger Create(string settingsFile, string logFolder, DateTime started, SecretMask mask, LogEventLevel? level = null)
     {
-        var run = started.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        // The process id keeps two runs started in the same second (Task Scheduler) out of each other's log files.
+        var run = $"{started.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture)}_{Environment.ProcessId}";
         if (!File.Exists(settingsFile))
         {
             return new LoggerConfiguration()
