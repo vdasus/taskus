@@ -147,12 +147,45 @@ public class TaskLoaderTests
 
         result.IsFailure.Should().BeTrue();
         result.Error.Should().Contain("source.url: ")
-            .And.Contain("source.timeout: must be positive")
+            .And.Contain("source.timeout: must be more than 0 and at most 3600 seconds")
             .And.Contain("source.body: needs method POST, PUT or PATCH")
             .And.Contain("maxErrors: must not be negative")
             .And.Contain("smtp: is required by the smtp sink")
             .And.Contain("smtp: is required by report.mailTo")
             .And.Contain("report.mailTo: must be e-mail addresses");
+    }
+
+    [Theory]
+    [Trait("Category", "Unit")]
+    [InlineData("timeout: 3601", "source.timeout: must be more than 0 and at most 3600 seconds")]
+    [InlineData("rateLimit: 1001", "source.rateLimit: must be 0 (no limit) or between 0.001 and 1000")]
+    [InlineData("rateLimit: 0.0001", "source.rateLimit: must be 0 (no limit) or between 0.001 and 1000")]
+    [InlineData("rateLimit: -1", "source.rateLimit: must be 0 (no limit) or between 0.001 and 1000")]
+    public void Load_HttpLimitOutOfRange_IsRejected(string setting, string error)
+    {
+        var result = Load($$"""
+            source: { type: http, method: GET, url: "http://localhost/api", {{setting}} }
+            sink: { type: excel, folder: y, file: z.xlsx }
+            """);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().Contain(error);
+    }
+
+    [Theory]
+    [Trait("Category", "Unit")]
+    [InlineData("timeout: 3600")]
+    [InlineData("rateLimit: 0")]
+    [InlineData("rateLimit: 0.001")]
+    [InlineData("rateLimit: 1000")]
+    public void Load_HttpLimitAtTheEdge_IsAccepted(string setting)
+    {
+        var result = Load($$"""
+            source: { type: http, method: GET, url: "http://localhost/api", {{setting}} }
+            sink: { type: excel, folder: y, file: z.xlsx }
+            """);
+
+        result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error : "");
     }
 
     [Fact]

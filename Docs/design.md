@@ -56,6 +56,11 @@ same task that starts meanwhile, for example because the previous scheduled run 
 with an error and exit code `1`: two runs would read the same input files and write every row twice. A dry run
 and `validate` take no lock.
 
+Ctrl+C stops the run. A unit whose sink keeps nothing on failure (a transaction `all`, the Excel sink) stops at
+once: the transaction is rolled back, and the input stays for the next run. A unit whose sink keeps every written
+row (row by row inserts, HTTP, SMTP) is finished first and its input is moved, because the next run would write
+those rows again. A second Ctrl+C ends the process at once, also during a hung database call.
+
 In a folder, the secrets file (`secrets.yaml` or the one given by `--secrets`) is not read as a task.
 Windows Task Scheduler can act on these codes.
 
@@ -254,11 +259,11 @@ sink:
   url: https://example.com/api   # template over the mapped row
   headers:
     Authorization: "Bearer ${secret:api_token}"
-  timeout: 30                   # seconds per attempt, default 100
+  timeout: 30                   # seconds per attempt, default 100, at most 3600
   retry:
     attempts: 3                 # extra attempts after the first call, default 3
     delay: 2                    # seconds before the first retry, default 1
-  rateLimit: 5                  # requests per second, default: no limit
+  rateLimit: 5                  # requests per second, 0.001 to 1000, default 0: no limit
 ```
 
 - `url` is a template; `row` in it is the mapped row, e.g. `https://example.com/api/{{ row.id | html.url_encode }}`.

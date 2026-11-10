@@ -75,12 +75,19 @@ public sealed class Runner(
                 log.Debug("{Task}: {Unit} sink opened, all or nothing {AllOrNothing}", task, unit.Name, session.AllOrNothing);
             }
 
+            // Ctrl+C: rows a sink keeps cannot be taken back, so such a unit finishes and its input is moved;
+            // otherwise the next run would write them again. A second Ctrl+C ends the process at once.
+            var rowCt = session is { KeepsNothingOnFailure: false } ? CancellationToken.None : ct;
+            using var notice = rowCt == ct ? default : ct.Register(() => log.Warning(
+                "{Task}: cancel requested, finishing {Unit} first so its written rows are not written again; press Ctrl+C again to end now",
+                task, unit.Name));
+
             var aborted = false;
-            await foreach (var row in unit.Rows.WithCancellation(ct))
+            await foreach (var row in unit.Rows.WithCancellation(rowCt))
             {
                 report.Read++;
                 log.Verbose("{Task}: {Unit} row {Row} read: {@Values}", task, unit.Name, row.Number, Hide(row.Values));
-                var written = await WriteAsync(session, unit.Name, row, report, ct);
+                var written = await WriteAsync(session, unit.Name, row, report, rowCt);
                 if (written.IsSuccess)
                 {
                     report.Written++;
@@ -100,7 +107,7 @@ public sealed class Runner(
 
             if (!aborted)
             {
-                var completed = session is null ? Result.Success() : await session.CompleteAsync(ct);
+                var completed = session is null ? Result.Success() : await session.CompleteAsync(rowCt);
                 report.Completed = completed.IsSuccess;
                 report.Failure = completed.IsFailure ? completed.Error : null;
                 log.Debug("{Task}: {Unit} sink completed {Completed}", task, unit.Name, report.Completed);

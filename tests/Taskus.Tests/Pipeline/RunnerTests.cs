@@ -1,4 +1,5 @@
 using FluentAssertions;
+using System.Runtime.CompilerServices;
 using NSubstitute;
 using Serilog.Core;
 using Taskus.Config;
@@ -20,10 +21,17 @@ public class RunnerTests
         session.CompleteAsync(default).ReturnsForAnyArgs(Result.Success());
     }
 
-    private SourceUnit Unit(string name, params int[] ids) => new(
-        name,
-        ids.Select(id => new SourceRow(id, new Dictionary<string, object?> { ["id"] = id })).ToAsyncEnumerable(),
-        completed => done.Add((name, completed)));
+    private SourceUnit Unit(string name, params int[] ids) => new(name, Rows(ids), completed => done.Add((name, completed)));
+
+    private static async IAsyncEnumerable<SourceRow> Rows(int[] ids, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        foreach (var id in ids)
+        {
+            ct.ThrowIfCancellationRequested(); // as the real sources do between rows
+            await System.Threading.Tasks.Task.Yield();
+            yield return new SourceRow(id, new Dictionary<string, object?> { ["id"] = id });
+        }
+    }
 
     private void FailRow(int id) =>
         session.WriteAsync(Arg.Is<Row>(r => (int)r["id"]! == id), Arg.Any<CancellationToken>()).Returns(Result.Failure($"bad {id}"));
@@ -164,5 +172,38 @@ public class RunnerTests
         var report = await Runner(ErrorPolicy.Continue, 100, new SourceUnit("a", Rows(), _ => { })).RunAsync(false, TestContext.Current.CancellationToken);
 
         report.Units.Single().Should().BeEquivalentTo(new { Read = 1, Written = 0, Completed = false, Failure = "connection lost" });
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public async Task Cancelled_SinkThatKeepsRows_FinishesUnitAndMovesInput()
+    {
+        using var cts = new CancellationTokenSource();
+        session.WriteAsync(default!, default).ReturnsForAnyArgs(_ => { cts.Cancel(); return Result.Success(); });
+
+        var run = () => Runner(ErrorPolicy.Continue, 100, Unit("a", 1, 2, 3), Unit("b", 4)).RunAsync(false, cts.Token);
+
+        await run.Should().ThrowAsync<OperationCanceledException>();
+        done.Should().Equal(("a", true));
+        await session.Received(3).WriteAsync(Arg.Any<Row>(), Arg.Any<CancellationToken>());
+        await session.Received(1).CompleteAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public async Task Cancelled_SinkThatKeepsNothing_StopsAtOnceAndLeavesInput()
+    {
+        session.KeepsNothingOnFailure.Returns(true);
+        using var cts = new CancellationTokenSource();
+        session.WriteAsync(default!, default).ReturnsForAnyArgs(_ => { cts.Cancel(); return Result.Success(); });
+
+        var run = () => Runner(ErrorPolicy.Continue, 100, Unit("a", 1, 2, 3)).RunAsync(false, cts.Token);
+
+        await run.Should().ThrowAsync<OperationCanceledException>();
+        done.Should().BeEmpty();
+        await session.Received(1).WriteAsync(Arg.Any<Row>(), Arg.Any<CancellationToken>());
+        await session.DidNotReceive().CompleteAsync(Arg.Any<CancellationToken>());
     }
 }

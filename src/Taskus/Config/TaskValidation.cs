@@ -122,8 +122,10 @@ public static class TaskValidation
         {
             RuleFor(x => x.Method).IsInEnum().WithMessage("must be GET | POST | PUT | PATCH | DELETE");
             RuleFor(x => x.Url).NotEmpty().WithMessage("must not be empty").Custom(Template);
-            RuleFor(x => x.Timeout).GreaterThan(0).WithMessage("must be positive");
-            RuleFor(x => x.RateLimit).GreaterThanOrEqualTo(0).WithMessage("must not be negative");
+            RuleFor(x => x.Timeout).Must(t => t is > 0 and <= 3600).WithMessage("must be more than 0 and at most 3600 seconds");
+            // The upper end keeps a mistyped value from stalling a run or overflowing a TimeSpan.
+            RuleFor(x => x.RateLimit).Must(r => r == 0 || r is >= 0.001 and <= 1000)
+                .WithMessage("must be 0 (no limit) or between 0.001 and 1000 requests per second");
             RuleFor(x => x.Headers.Keys).Must(keys => keys.All(k => k.Length > 0)).WithName("headers").WithMessage("names must not be empty");
             RuleFor(x => x.Retry!.Attempts).GreaterThanOrEqualTo(0).When(x => x.Retry is not null).WithMessage("must not be negative");
             RuleFor(x => x.Retry!.Delay).GreaterThanOrEqualTo(0).When(x => x.Retry is not null).WithMessage("must not be negative");
