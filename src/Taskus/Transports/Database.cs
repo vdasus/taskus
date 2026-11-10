@@ -205,11 +205,16 @@ internal static class DbValues
                 double d when type == typeof(DateTime) => DateTime.FromOADate(d),
                 string s when type == typeof(Guid) => Guid.Parse(s),
                 string s when type == typeof(bool) => ParseBool(s),
+                // Not ChangeType: it reads the comma in "12,50" as a thousands separator and gives 1250.
+                string s when type == typeof(decimal) => decimal.Parse(s, NumberStyles.Float, CultureInfo.InvariantCulture),
+                string s when type == typeof(double) => double.Parse(s, NumberStyles.Float, CultureInfo.InvariantCulture),
+                string s when type == typeof(float) => float.Parse(s, NumberStyles.Float, CultureInfo.InvariantCulture),
                 _ => System.Convert.ChangeType(value, type, CultureInfo.InvariantCulture),
             };
         }
-        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or ArgumentException)
         {
+            // ArgumentException: DateTime.FromOADate on a number that is no date.
             return Result.Failure<object>($"'{value}' cannot be converted to {dataType}");
         }
     }

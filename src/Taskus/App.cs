@@ -1,5 +1,7 @@
 using Serilog;
 using System.IO.Abstractions;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
 using Taskus.Config;
 using Taskus.Pipeline;
@@ -22,7 +24,7 @@ public sealed class App(ILogger log, SecretMask? secretMask = null, IFileSystem?
 
     public async Task<int> ExecuteAsync(string verb, string path, string secretsFile, bool dryRun, CancellationToken ct)
     {
-        var files = TaskFiles(path);
+        var files = TaskFiles(path, secretsFile);
         var secrets = Secrets.Load(fs, secretsFile, unprotectSecrets);
         if (Result.Combine("; ", files, secrets) is { IsFailure: true } failed)
         {
@@ -79,6 +81,13 @@ public sealed class App(ILogger log, SecretMask? secretMask = null, IFileSystem?
             return ExitCode.Invalid;
         }
 
+        using var runLock = dryRun ? null : TryLock(file);
+        if (!dryRun && runLock is null)
+        {
+            log.Error("{File}: another taskus run of this task is still going; skipped", file);
+            return ExitCode.Errors;
+        }
+
         var task = loaded.Value;
         var report = await CompositionRoot.Runner(task, log, fs).RunAsync(dryRun, ct);
         report.Redact(mask.Apply); // error texts can quote a URL with a secret in it; the report may go by e-mail
@@ -90,14 +99,36 @@ public sealed class App(ILogger log, SecretMask? secretMask = null, IFileSystem?
         return report.HasErrors || sent.IsFailure ? ExitCode.Errors : ExitCode.Success;
     }
 
-    private Result<IReadOnlyList<string>> TaskFiles(string path)
+    // Two overlapping runs of one task would read the same input twice. The lock is held until the run ends.
+    // It lives in the temp folder: the task folder can be read-only.
+    internal static string LockFile(IFileSystem fs, string file)
+    {
+        var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fs.Path.GetFullPath(file).ToUpperInvariant())))[..16];
+        return fs.Path.Combine(fs.Path.GetTempPath(), $"taskus_{id}.lock");
+    }
+
+    private Stream? TryLock(string file)
+    {
+        try
+        {
+            return fs.File.Open(LockFile(fs, file), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException ex) when (ex is not DirectoryNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    private Result<IReadOnlyList<string>> TaskFiles(string path, string secretsFile)
     {
         if (fs.File.Exists(path))
             return new[] { path };
         if (!fs.Directory.Exists(path))
             return Result.Failure<IReadOnlyList<string>>($"{path}: no such file or folder");
 
+        var secrets = fs.Path.GetFullPath(secretsFile); // a secrets file kept with the tasks is not a task
         return fs.Directory.EnumerateFiles(path, "*.yaml").Concat(fs.Directory.EnumerateFiles(path, "*.yml"))
+            .Where(file => !string.Equals(fs.Path.GetFullPath(file), secrets, StringComparison.OrdinalIgnoreCase))
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

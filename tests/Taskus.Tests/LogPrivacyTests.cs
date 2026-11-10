@@ -104,4 +104,36 @@ public class LogPrivacyTests
 
         TaskLoader.Load(new System.IO.Abstractions.FileSystem(), file, Secrets.None).Value.LogExclude.Should().Equal("email", "personal_code");
     }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public async Task SecretInExceptionText_IsMaskedInLog()
+    {
+        var mask = new SecretMask();
+        mask.Add(new System.Text.Json.Nodes.JsonObject { ["api_token"] = Token });
+        var source = Substitute.For<ISource>();
+        source.Units().Returns(_ => throw new InvalidOperationException($"GET http://example.com/api?key={Token}: HTTP 401"));
+        var sink = new CollectingSink();
+        var runner = new Runner("t", source, RowMapper.Create([]).Value, Substitute.For<ISink>(), ErrorPolicy.Stop, 100, sink.Logger(mask));
+
+        await runner.RunAsync(dryRun: false, TestContext.Current.CancellationToken);
+
+        sink.Text.Should().Contain("key=***").And.NotContain(Token);
+        sink.Events.Should().OnlyContain(e => e.Exception == null, "Serilog writes an exception outside the masked properties");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public void SecretInUriProperty_IsMasked()
+    {
+        var mask = new SecretMask();
+        mask.Add(new System.Text.Json.Nodes.JsonObject { ["api_token"] = Token });
+        var sink = new CollectingSink();
+
+        sink.Logger(mask).Warning("{Url}: retrying", new Uri($"http://example.com/api?key={Token}"));
+
+        sink.Text.Should().Contain("key=***").And.NotContain(Token);
+    }
 }

@@ -159,4 +159,38 @@ public class AppTests
         exit.Should().Be(ExitCode.Invalid);
         sink.Text.Should().Contain("a.yaml\": \"The process cannot access the file").And.Contain("b.yaml\": valid");
     }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Priority", "High")]
+    public async Task Run_WhileAnotherRunOfTheTaskIsGoing_SkipsItAndKeepsInput()
+    {
+        using var temp = new TempFolder();
+        Directory.CreateDirectory(temp.File("in"));
+        WriteInput(temp.File("in", "clients.xlsx"));
+        var task = Task(temp);
+        var sink = new CollectingSink();
+        int exit;
+
+        using (new FileStream(App.LockFile(new System.IO.Abstractions.FileSystem(), task), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+            exit = await new App(sink.Logger()).ExecuteAsync("run", task, "none.yaml", dryRun: false, TestContext.Current.CancellationToken);
+
+        exit.Should().Be(ExitCode.Errors);
+        sink.Text.Should().Contain("another taskus run of this task is still going");
+        File.Exists(temp.File("in", "clients.xlsx")).Should().BeTrue();
+        Directory.Exists(temp.File("out")).Should().BeFalse();
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task Validate_Folder_SkipsTheSecretsFileKeptWithTheTasks()
+    {
+        using var temp = new TempFolder();
+        temp.Write("a.yaml", "source: { type: excel, folder: x }\nsink: { type: excel, folder: y, file: z.xlsx }\n");
+        var secrets = temp.Write("secrets.yaml", "api_token: tok-12345\n");
+
+        var exit = await new App(Logger.None).ExecuteAsync("validate", temp.Path, secrets, false, TestContext.Current.CancellationToken);
+
+        exit.Should().Be(ExitCode.Success, "secrets.yaml has no source and no sink, so as a task it would be invalid");
+    }
 }

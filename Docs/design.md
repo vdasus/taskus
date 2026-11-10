@@ -50,6 +50,13 @@ taskus schema > task.schema.json            # JSON Schema of task files
 
 Exit codes: `0` success, `1` the run had row errors, `2` a task file is invalid or a run could not start.
 An unexpected error in one task file is logged (message only, masked) and the next file still runs.
+
+A run holds a lock on its task file until it ends (a lock file in the system temp folder). A second run of the
+same task that starts meanwhile, for example because the previous scheduled run is still going, skips that task
+with an error and exit code `1`: two runs would read the same input files and write every row twice. A dry run
+and `validate` take no lock.
+
+In a folder, the secrets file (`secrets.yaml` or the one given by `--secrets`) is not read as a task.
 Windows Task Scheduler can act on these codes.
 
 ## Task file
@@ -173,6 +180,8 @@ Inserts use one parameterised statement per unit. It is not prepared on the serv
 from each value. Columns are the mapped field names. Taskus reads the column types
 from the table and converts values to them: text to numbers, dates and booleans (invariant culture), Excel date
 numbers to dates, empty text to `null` for non-text columns. Dates without a time zone are taken as local time.
+A number written as text needs a decimal point: `12.50`. Text with a comma, `12,50` or `1,250`, is a row error,
+because it cannot be told whether the comma separates decimals or thousands.
 
 Batches with a `batchSize` are not supported; add them when a task needs them.
 
@@ -204,7 +213,8 @@ For PostgreSQL itself, `postgres` stays the better choice: Npgsql is built into 
 
 The file name is a Scriban template; `unit` holds the input file name without extension (`query` for a
 database source). `overwrite: true|false` (default `false`) controls an existing file; with `false` the unit fails
-before reading, and the input stays in place. `sheet` names the sheet (default `Sheet1`). The sink always writes a
+before reading, and the input stays in place. The file is saved under a temporary name (`<name>.tmp`) and then
+renamed, so an existing file is replaced only by a complete new one. `sheet` names the sheet (default `Sheet1`). The sink always writes a
 new file, so the name is exactly `sheet` and does not depend on the language of Excel that opens it; set
 `sheet: Lapas1` for a Lithuanian name. Two units of one run
 cannot write the same file, even with `overwrite: true`: the second unit fails and its input stays in place, so a
@@ -320,6 +330,10 @@ source:
 - In a sink `path`, `{run}` becomes the run start time and the process id, so tasks that Task Scheduler starts in
   the same second do not share a log file (Windows would let only the first one write it). A relative path resolves against the log folder: `logs`
   next to the executable, or the folder given by `--logs`. An absolute path is used as is.
+- Every run adds its own files, so at start Taskus deletes `taskus_*` files older than 90 days from the log
+  folder. `--log-days=N` changes the age; `--log-days=0` keeps every file. Files written elsewhere through an
+  absolute `path` are not deleted.
+- When `appsettings.json` cannot be read, Taskus prints the reason and ends with exit code `2`.
 - Sinks, levels and output templates change in `appsettings.json` without a rebuild. The executable includes the
   Console and File sinks; another sink package needs a rebuild with that package referenced.
 - Without `appsettings.json`, Taskus logs to the console and to a text file per run.
@@ -360,8 +374,9 @@ Known limits (third iteration):
 
 - Error texts can still quote a row value: a failed type conversion (`'abc' cannot be converted to integer`) or
   an HTTP URL built from row fields. `logExclude` does not apply to error texts or to the run report.
-- Exception stack traces (logged at `Error`) are not masked.
 - A secret written directly into a task file, not through `${secret:...}`, is not known to the mask.
+- For a unit that did not complete, `written` is `0` when the sink kept nothing: a transaction that was rolled
+  back, an Excel file that was never saved. Otherwise it counts the rows that stay written.
 - At the end of a run Taskus builds a summary: rows read, rows written, errors, and the first N errors with the
   source file, row number and reason. With several input files the summary has one section per file.
 - `report.folder` saves the summary as an `.xlsx` file (sheets `Summary` and `Errors`). `report.mailTo` sends
@@ -374,7 +389,8 @@ Known limits (third iteration):
 Connection strings and SMTP credentials live in `secrets.yaml` next to the executable. A task refers to them as
 `${secret:<name>}`. `--secrets` points to another file. A value that is only a reference takes the secret as a
 whole, so a secret can be a mapping (`smtp: ${secret:smtp_main}`); a reference inside longer text must point to a
-text secret.
+text secret. `--secrets` takes the name of the plain file; a name with the extension `.sec` is rejected, because
+the protected copy is found from the plain name.
 
 ```yaml
 pg_main: Host=db;Database=main;Username=taskus;Password=...;SSL Mode=VerifyFull

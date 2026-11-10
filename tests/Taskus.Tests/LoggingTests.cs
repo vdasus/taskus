@@ -122,4 +122,46 @@ public class LoggingTests
     {
         Logging.TryParseLevel("loud", out _).Should().BeFalse();
     }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void ProcessId_IsPartOfTheFileName()
+    {
+        using var temp = new TempFolder();
+
+        using (var log = Logging.Create(temp.File("none.json"), temp.Path, Started, new SecretMask(), processId: 4242))
+            log.Information("hello");
+
+        File.ReadAllText(temp.File("taskus_20261027_101500_4242.log")).Should().Contain("hello");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public void Cleanup_DeletesOnlyOldTaskusFiles()
+    {
+        using var temp = new TempFolder();
+        var old = temp.Write("taskus_20260101_000000.log", "old");
+        var recent = temp.Write("taskus_20261020_000000.log", "recent");
+        var foreign = temp.Write("other.log", "not ours");
+        File.SetLastWriteTime(old, Started.AddDays(-31));
+        File.SetLastWriteTime(recent, Started.AddDays(-29));
+        File.SetLastWriteTime(foreign, Started.AddDays(-400));
+
+        Logging.Cleanup(temp.Path, 30, Started);
+
+        Directory.GetFiles(temp.Path).Select(Path.GetFileName).Should().BeEquivalentTo("taskus_20261020_000000.log", "other.log");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Cleanup_ZeroDays_KeepsEverything()
+    {
+        using var temp = new TempFolder();
+        File.SetLastWriteTime(temp.Write("taskus_20200101_000000.log", "old"), Started.AddDays(-4000));
+
+        Logging.Cleanup(temp.Path, 0, Started);
+
+        Directory.GetFiles(temp.Path).Should().ContainSingle();
+    }
 }

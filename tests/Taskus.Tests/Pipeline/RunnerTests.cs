@@ -147,4 +147,22 @@ public class RunnerTests
         report.Units[0].Failure.Should().Be("input not moved, the next run reads it again: file is in use");
         done.Should().Equal(("b", true));
     }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public async Task SourceFailsMidUnit_SinkThatKeepsNothing_ReportsNoWrittenRows()
+    {
+        session.KeepsNothingOnFailure.Returns(true);
+        async IAsyncEnumerable<SourceRow> Rows()
+        {
+            yield return new SourceRow(1, new Dictionary<string, object?> { ["id"] = 1 });
+            await System.Threading.Tasks.Task.Yield();
+            throw new IOException("connection lost");
+        }
+
+        var report = await Runner(ErrorPolicy.Continue, 100, new SourceUnit("a", Rows(), _ => { })).RunAsync(false, TestContext.Current.CancellationToken);
+
+        report.Units.Single().Should().BeEquivalentTo(new { Read = 1, Written = 0, Completed = false, Failure = "connection lost" });
+    }
 }

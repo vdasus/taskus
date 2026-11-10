@@ -57,11 +57,13 @@ public sealed partial class TaskTemplate
         }
     }
 
-    private static ScriptObject ToScript(Row row)
+    /// <summary>A row as Scriban reads it. Read-only, so one copy can serve every template of a row.</summary>
+    public static ScriptObject ToScript(Row row)
     {
         var result = new ScriptObject();
         foreach (var (key, value) in row)
             result[key] = value;
+        result.IsReadOnly = true;
         return result;
     }
 }

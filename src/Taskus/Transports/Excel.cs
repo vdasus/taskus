@@ -83,6 +83,8 @@ public sealed class ExcelSink(IFileSystem fs, string folder, TaskTemplate file, 
 
         public bool AllOrNothing => false; // onError decides: continue keeps good rows, stop writes no file
 
+        public bool KeepsNothingOnFailure => true; // the file is saved only when the unit completes
+
         public Task<Result> WriteAsync(Row row, CancellationToken ct)
         {
             rows.Add(new Dictionary<string, object?>(row));
@@ -92,8 +94,19 @@ public sealed class ExcelSink(IFileSystem fs, string folder, TaskTemplate file, 
         public Task<Result> CompleteAsync(CancellationToken ct)
         {
             fs.Directory.CreateDirectory(fs.Path.GetDirectoryName(path)!); // path is already full
-            using (var stream = fs.File.Create(path))
-                stream.SaveAs(rows, sheetName: sheet, excelType: ExcelType.XLSX);
+            var temp = path + ".tmp"; // an existing file survives a save that fails halfway
+            try
+            {
+                using (var stream = fs.File.Create(temp))
+                    stream.SaveAs(rows, sheetName: sheet, excelType: ExcelType.XLSX);
+                fs.File.Move(temp, path, overwrite: true);
+            }
+            finally
+            {
+                if (fs.File.Exists(temp))
+                    fs.File.Delete(temp);
+            }
+
             log.Debug("Wrote {RowCount} rows to {Path}, sheet {Sheet}", rows.Count, path, sheet);
             return Task.FromResult(Result.Success());
         }

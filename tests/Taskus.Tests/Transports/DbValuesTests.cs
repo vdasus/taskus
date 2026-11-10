@@ -59,4 +59,28 @@ public class DbValuesTests
         result.IsFailure.Should().BeTrue();
         result.Error.Should().Be("'abc' cannot be converted to integer");
     }
+
+    [Theory]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    [InlineData(typeof(decimal))]
+    [InlineData(typeof(double))]
+    [InlineData(typeof(float))]
+    public void Convert_CommaDecimalText_FailsInsteadOfDroppingTheComma(Type type)
+    {
+        var result = DbValues.Convert("12,50", type, "numeric");
+
+        result.IsFailure.Should().BeTrue("the comma must not be read as a thousands separator, which gives 1250");
+        result.Error.Should().Be("'12,50' cannot be converted to numeric");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Convert_NumberThatIsNoDate_Fails()
+    {
+        var result = DbValues.Convert(99999999d, typeof(DateTime), "date");
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().Be("'99999999' cannot be converted to date");
+    }
 }

@@ -52,7 +52,8 @@ public sealed class SecretMask : ILogEventEnricher
 
     private LogEventPropertyValue Apply(LogEventPropertyValue value) => value switch
     {
-        ScalarValue { Value: string text } when Apply(text) is var masked && masked != text => new ScalarValue(masked),
+        // A Uri is a scalar too, and a URL is where a token most often sits.
+        ScalarValue { Value: string or Uri } scalar when scalar.Value.ToString()! is var text && Apply(text) is var masked && masked != text => new ScalarValue(masked),
         SequenceValue sequence => new SequenceValue(sequence.Elements.Select(Apply)),
         StructureValue structure => new StructureValue(structure.Properties.Select(p => new LogEventProperty(p.Name, Apply(p.Value))), structure.TypeTag),
         DictionaryValue dictionary => new DictionaryValue(dictionary.Elements.Select(kv => KeyValuePair.Create(kv.Key, Apply(kv.Value)))),

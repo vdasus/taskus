@@ -125,6 +125,10 @@ public sealed class Runner(
                 await session.DisposeAsync();
         }
 
+        // Before the input is moved: a failed move leaves the written rows where they are.
+        if (!report.Completed && session is { KeepsNothingOnFailure: true })
+            report.Written = 0;
+
         if (!dryRun)
         {
             try

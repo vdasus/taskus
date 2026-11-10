@@ -25,6 +25,9 @@ public interface ISinkSession : IAsyncDisposable
     /// <summary>True when one failed row discards the whole unit, as in a single database transaction.</summary>
     bool AllOrNothing { get; }
 
+    /// <summary>True when a unit that did not complete leaves no rows behind: a rolled back transaction, a file never saved.</summary>
+    bool KeepsNothingOnFailure => AllOrNothing;
+
     Task<Result> WriteAsync(Row row, CancellationToken ct);
 
     Task<Result> CompleteAsync(CancellationToken ct);

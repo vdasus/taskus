@@ -27,7 +27,7 @@ public sealed class RowMapper
         if (fields.Count == 0)
             return Result.Success(row);
 
-        var variables = new Dictionary<string, object?> { ["row"] = row };
+        var variables = new Dictionary<string, object?> { ["row"] = TaskTemplate.ToScript(row) }; // converted once, not per field
         var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var (field, template) in fields)
         {
