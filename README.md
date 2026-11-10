@@ -22,10 +22,15 @@ taskus run tasks/                             # every *.yaml / *.yml in a folder
 taskus run tasks/import-clients.yaml --dry-run
 taskus validate tasks/
 taskus run tasks/import-clients.yaml --log-level=trace   # every row and HTTP call in the log files
+taskus run tasks/ --logs=D:\logs --log-days=30           # log folder; delete logs older than 30 days (default 90)
 taskus schema                                 # JSON Schema of task files
 ```
 
-Exit codes: `0` success, `1` the run had errors, `2` a task file is invalid.
+Exit codes: `0` success, `1` the run had errors or the same task is still running, `2` a task file is invalid
+or the run could not start. `taskus --help` lists every option.
+
+Ctrl+C stops the run; a second Ctrl+C ends the process at once. What happens to a file being processed is
+described in [Docs/design.md](Docs/design.md).
 
 Example tasks are in [examples/](examples). Copy `examples/secrets.yaml.example` to `secrets.yaml` next to
 `taskus.exe`, fill in the connection strings and SMTP settings, and encrypt it:
@@ -85,18 +90,22 @@ dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingl
 dotnet publish src/Taskus -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish/win-x64-fdd
 ```
 
-The result is `taskus.exe` and `appsettings.json` (logging settings); the machine that runs it needs no .NET
-installation. Logs go to `logs` next to the executable: a text file and a JSON file per run.
+The result is `taskus.exe` and `appsettings.json` (logging settings). The self-contained build needs no .NET
+installation; the framework-dependent one needs the .NET 10 runtime. Logs go to `logs` next to the executable:
+a text file and a JSON file per run, `taskus_<yyyyMMdd_HHmmss>_<process id>.*`. Files older than 90 days are
+deleted at start (`--log-days`).
 
 ## Release
 
-CI runs the tests on Linux and Windows for every push to `main` and every pull request. To release, push a
-version tag:
+CI runs the tests on Linux and Windows for every push to `main` and every pull request. To release, set
+`<Version>` in `src/Taskus/Taskus.csproj` and the status line above, commit and push, then push a version tag:
 
 ```
 git tag -a v0.2.0 -m "Taskus 0.2.0"
 git push origin v0.2.0
 ```
+
+Do not create the release by hand (`gh release create`): the workflow creates it and fails when it already exists.
 
 The release workflow tests, builds both Windows zips (self-contained and framework-dependent) with the tag's
 version, and publishes a GitHub release with the zips and their SHA-256 checksums. `0.x` versions are marked as pre-release.
