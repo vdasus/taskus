@@ -103,6 +103,7 @@ public interface IHttpEndpointOptions
     double Timeout { get; }
     RetryOptions? Retry { get; }
     double RateLimit { get; }
+    string? Body { get; }
 }
 
 /// <summary>Settings shared by the database sources.</summary>
@@ -259,6 +260,9 @@ public sealed record HttpSinkOptions : SinkOptions, IHttpEndpointOptions
 
     [Description("Absolute http(s) URL; a Scriban template over the mapped row.")]
     public required string Url { get; init; }
+
+    [Description("Request body template over the mapped row; must render to JSON. Default: the mapped row as a JSON object. Needs POST, PUT or PATCH.")]
+    public string? Body { get; init; }
 
     [Description("Request headers. Content-Type replaces the default application/json.")]
     public Dictionary<string, string> Headers { get; init; } = [];

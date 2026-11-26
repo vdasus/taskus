@@ -271,6 +271,15 @@ sink:
   The result must be an absolute `http` or `https` URL. Values are not encoded for you: without `html.url_encode`, a value such as
   `7/../admin?x=1` changes the path or the query of the call.
 - POST, PUT and PATCH send the mapped row as a JSON object (`{"id":101}`); GET and DELETE send no body.
+- `body` replaces that default with a template over the mapped row, for nested or differently shaped JSON:
+
+  ```yaml
+  body: |
+    {"data": {"id": {{ row.id }}, "name": {{ row.name | object.to_json }}}}
+  ```
+
+  Pass text values through `object.to_json`: it adds the quotes and escapes the value, so a name with a `"` keeps the
+  JSON valid. The rendered body must be valid JSON, or the row fails before the call. `body` needs POST, PUT or PATCH.
 - `headers` go on every request; `Content-Type` replaces the default `application/json`.
 - Any 2xx status is success. Other statuses, network errors and time-outs fail the row; the error message holds
   the status and the response body (an HTML error page is left out, long bodies are cut).

@@ -155,6 +155,19 @@ public class TaskLoaderTests
             .And.Contain("report.mailTo: must be e-mail addresses");
     }
 
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Load_SinkBodyWithGet_IsRejected()
+    {
+        var result = Load("""
+            source: { type: excel, folder: in }
+            sink: { type: http, method: GET, url: "http://example.com", body: "{{ 1 + }}" }
+            """);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Should().Contain("sink.body: needs method POST, PUT or PATCH").And.Contain("sink.body: ");
+    }
+
     [Theory]
     [Trait("Category", "Unit")]
     [InlineData("timeout: 3601", "source.timeout: must be more than 0 and at most 3600 seconds")]

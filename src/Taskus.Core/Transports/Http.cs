@@ -175,28 +175,59 @@ internal sealed class Throttle(double perSecond, TimeProvider time)
 
 /// <summary>
 /// Calls an HTTP API once per row. <c>url</c> is a template over the mapped <c>row</c>.
-/// POST, PUT and PATCH send the mapped row as a JSON object; GET and DELETE send no body.
-/// Any 2xx status is success; the response body is not kept.
+/// POST, PUT and PATCH send the mapped row as a JSON object, or the rendered <c>body</c> template when it is set;
+/// GET and DELETE send no body. Any 2xx status is success; the response body is not kept.
 /// </summary>
-public sealed class HttpSink(HttpEndpoint endpoint) : ISink
+public sealed class HttpSink(HttpEndpoint endpoint, TaskTemplate? body = null) : ISink
 {
     public Task<Result<ISinkSession>> OpenAsync(string unit, CancellationToken ct) =>
-        Task.FromResult(Result.Success<ISinkSession>(new Session(endpoint)));
+        Task.FromResult(Result.Success<ISinkSession>(new Session(endpoint, body)));
 
-    private sealed class Session(HttpEndpoint endpoint) : ISinkSession
+    private sealed class Session(HttpEndpoint endpoint, TaskTemplate? body) : ISinkSession
     {
         public bool AllOrNothing => false; // a call that reached the API cannot be undone
 
         public async Task<Result> WriteAsync(Row row, CancellationToken ct)
         {
-            var target = endpoint.Url(new Dictionary<string, object?> { ["row"] = row });
+            var variables = new Dictionary<string, object?> { ["row"] = row };
+            var target = endpoint.Url(variables);
             if (target.IsFailure)
                 return target;
 
-            var sent = await endpoint.SendAsync(target.Value, () => endpoint.SendsBody ? JsonContent.Create(row) : null, ct);
+            string? text = null;
+            if (endpoint.SendsBody && body is not null)
+            {
+                var rendered = Body(body, variables);
+                if (rendered.IsFailure)
+                    return rendered;
+                text = rendered.Value;
+            }
+
+            var sent = await endpoint.SendAsync(target.Value, () =>
+                !endpoint.SendsBody ? null
+                : text is not null ? new StringContent(text, Encoding.UTF8, "application/json")
+                : JsonContent.Create(row), ct);
             if (sent.IsSuccess)
                 sent.Value.Dispose();
             return sent;
+        }
+
+        // A rendered body that is not JSON fails the row before the call, with a message that says why.
+        private static Result<string> Body(TaskTemplate body, IReadOnlyDictionary<string, object?> variables)
+        {
+            var rendered = body.Evaluate("sink.body", variables);
+            if (rendered.IsFailure)
+                return Result.Failure<string>(rendered.Error);
+            var text = Convert.ToString(rendered.Value, CultureInfo.InvariantCulture) ?? "";
+            try
+            {
+                using var _ = JsonDocument.Parse(text);
+                return text;
+            }
+            catch (JsonException ex)
+            {
+                return Result.Failure<string>($"sink.body is not valid JSON: {ex.Message}");
+            }
         }
 
         public Task<Result> CompleteAsync(CancellationToken ct) => Task.FromResult(Result.Success());

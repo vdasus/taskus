@@ -129,19 +129,14 @@ public static class TaskValidation
             RuleFor(x => x.Headers.Keys).Must(keys => keys.All(k => k.Length > 0)).WithName("headers").WithMessage("names must not be empty");
             RuleFor(x => x.Retry!.Attempts).GreaterThanOrEqualTo(0).When(x => x.Retry is not null).WithMessage("must not be negative");
             RuleFor(x => x.Retry!.Delay).GreaterThanOrEqualTo(0).When(x => x.Retry is not null).WithMessage("must not be negative");
-        }
-    }
-
-    private sealed class HttpSourceValidator : HttpEndpointValidator<HttpSourceOptions>
-    {
-        public HttpSourceValidator()
-        {
             RuleFor(x => x.Body).Custom(Template);
             RuleFor(x => x.Body)
                 .Must((options, _) => options.Method is HttpMethodName.Post or HttpMethodName.Put or HttpMethodName.Patch)
                 .When(x => x.Body is not null).WithMessage("needs method POST, PUT or PATCH");
         }
     }
+
+    private sealed class HttpSourceValidator : HttpEndpointValidator<HttpSourceOptions>;
 
     private sealed class HttpSinkValidator : HttpEndpointValidator<HttpSinkOptions>;
 }

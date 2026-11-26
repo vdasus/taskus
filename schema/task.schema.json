@@ -309,6 +309,13 @@
               "description": "Absolute http(s) URL; a Scriban template over the mapped row.",
               "type": "string"
             },
+            "body": {
+              "description": "Request body template over the mapped row; must render to JSON. Default: the mapped row as a JSON object. Needs POST, PUT or PATCH.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "headers": {
               "description": "Request headers. Content-Type replaces the default application/json.",
               "type": "object",

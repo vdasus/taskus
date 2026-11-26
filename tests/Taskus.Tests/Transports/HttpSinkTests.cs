@@ -2,6 +2,7 @@ using System.Net;
 using FluentAssertions;
 using Serilog.Core;
 using Taskus.Config;
+using Taskus.Mapping;
 using Taskus.Pipeline;
 using Taskus.Transports;
 
@@ -53,6 +54,41 @@ public class HttpSinkTests
         call.Method.Should().Be(HttpMethod.Get);
         call.Url.Should().Be("http://example.com/api/items/7");
         call.Body.Should().BeNull();
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public async Task Body_SendsTheRenderedTemplateInsteadOfTheRow()
+    {
+        var handler = new FakeHandler();
+        var body = TaskTemplate.Parse("""{"data":{"id":{{ row.id }},"name":{{ row.name | object.to_json }}}}""").Value;
+        var sink = new HttpSink(new HttpEndpoint(new HttpSinkOptions { Url = Api }, "sink", Logger.None, handler), body);
+
+        var result = await WriteAsync(sink, new Dictionary<string, object?> { ["id"] = 1, ["name"] = "say \"hi\"" });
+
+        result.IsSuccess.Should().BeTrue();
+        var call = handler.Calls.Single();
+        using var json = System.Text.Json.JsonDocument.Parse(call.Body!);
+        var data = json.RootElement.GetProperty("data");
+        data.GetProperty("id").GetInt32().Should().Be(1);
+        data.GetProperty("name").GetString().Should().Be("say \"hi\"", "object.to_json escapes the quotes");
+        call.Request.Content!.Headers.ContentType!.MediaType.Should().Be("application/json");
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public async Task Body_ThatIsNotJson_FailsRowWithoutCall()
+    {
+        var handler = new FakeHandler();
+        var body = TaskTemplate.Parse("""{"name":{{ row.name }}}""").Value;
+        var sink = new HttpSink(new HttpEndpoint(new HttpSinkOptions { Url = Api }, "sink", Logger.None, handler), body);
+
+        var result = await WriteAsync(sink, new Dictionary<string, object?> { ["name"] = "Jonas" });
+
+        result.Error.Should().StartWith("sink.body is not valid JSON");
+        handler.Calls.Should().BeEmpty();
     }
 
     [Fact]

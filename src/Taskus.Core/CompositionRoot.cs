@@ -36,7 +36,7 @@ public static class CompositionRoot
         PostgresSinkOptions o => new DbSink(PostgresDialect.Instance, o.Connection, o.Table, o.Transaction, log),
         OdbcSinkOptions o => new DbSink(OdbcDialect.Instance, o.Connection, o.Table, o.Transaction, log),
         SmtpSinkOptions o => new SmtpSink(smtp!, o.Html, log),
-        HttpSinkOptions o => new HttpSink(new HttpEndpoint(o, "sink", log, Handler())),
+        HttpSinkOptions o => new HttpSink(new HttpEndpoint(o, "sink", log, Handler()), o.Body is null ? null : TaskTemplate.Parse(o.Body).Value),
         _ => throw new NotSupportedException(options.GetType().Name),
     };
 
