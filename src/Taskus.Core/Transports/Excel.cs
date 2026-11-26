@@ -25,22 +25,29 @@ public sealed class ExcelSource(IFileSystem fs, string folder, string pattern, s
     private IEnumerable<SourceRow> Read(string file)
     {
         log.Debug("Reading {File}, sheet {Sheet}", file, sheet ?? "(first)");
+        var last = 1;
+        foreach (var row in ReadFile(fs, file, sheet))
+        {
+            last = row.Number;
+            yield return row;
+        }
+
+        log.Debug("{File}: last data row {LastRow}", file, last);
+    }
+
+    /// <summary>The rows of one .xlsx file as the source reads them: the first sheet row holds the field names, empty rows are skipped.</summary>
+    public static IEnumerable<SourceRow> ReadFile(IFileSystem fs, string file, string? sheet)
+    {
         var number = 1; // row 1 is the header
-        var empty = 0;
         using var stream = fs.File.OpenRead(file);
         foreach (IDictionary<string, object?> row in stream.Query(useHeaderRow: true, sheetName: sheet, excelType: ExcelType.XLSX))
         {
             number++;
             if (row.Values.All(v => v is null || v is string { Length: 0 }))
-            {
-                empty++;
                 continue;
-            }
 
             yield return new SourceRow(number, new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase));
         }
-
-        log.Debug("{File}: last sheet row {LastRow}, {EmptyRows} empty rows skipped", file, number, empty);
     }
 
     private void Move(string file, bool completed)

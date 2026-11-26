@@ -25,15 +25,26 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           # self-contained: runs anywhere; framework-dependent: needs the .NET 10 runtime, much smaller.
-          for KIND in self-contained framework-dependent; do
-            NAME=taskus-$VERSION-win-x64-$KIND
-            SELF=$([ $KIND = self-contained ] && echo true || echo false)
-            dotnet publish src/Taskus -c Release -r win-x64 --self-contained $SELF -p:PublishSingleFile=true -p:Version=$VERSION -o publish/$KIND
-            mkdir -p release/$NAME
-            cp publish/$KIND/taskus.exe publish/$KIND/appsettings.json README.md LICENSE release/$NAME/
-            cp -r examples release/$NAME/
-            (cd release && zip -qr $NAME.zip $NAME && sha256sum $NAME.zip > $NAME.zip.sha256)
+          # zip on this Linux runner stores the executable bit of the Linux and macOS binaries.
+          for RID in win-x64 linux-x64 osx-arm64; do
+            EXE=$([ $RID = win-x64 ] && echo taskus.exe || echo taskus)
+            for KIND in self-contained framework-dependent; do
+              NAME=taskus-$VERSION-$RID-$KIND
+              SELF=$([ $KIND = self-contained ] && echo true || echo false)
+              dotnet publish src/Taskus -c Release -r $RID --self-contained $SELF -p:PublishSingleFile=true -p:Version=$VERSION -o publish/$RID-$KIND
+              mkdir -p release/$NAME
+              cp publish/$RID-$KIND/$EXE publish/$RID-$KIND/appsettings.json README.md LICENSE release/$NAME/
+              cp -r examples release/$NAME/
+              (cd release && zip -qr $NAME.zip $NAME && sha256sum $NAME.zip > $NAME.zip.sha256)
+            done
           done
+      - name: Pack Taskus.Core
+        run: dotnet pack src/Taskus.Core -c Release -p:Version=${GITHUB_REF_NAME#v} -o nupkg
+      - name: Keep the package for the NuGet job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nupkg
+          path: nupkg/*.nupkg
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,6 +54,28 @@ jobs:
             0.*|*-*) PRERELEASE=--prerelease ;;
             *) PRERELEASE= ;;
           esac
-          gh release create "$GITHUB_REF_NAME" release/*.zip release/*.sha256 \
+          gh release create "$GITHUB_REF_NAME" release/*.zip release/*.sha256 nupkg/*.nupkg \
             --verify-tag $PRERELEASE --title "Taskus $VERSION" --generate-notes \
-            --notes "Windows x64 builds: self-contained (no .NET needed) or framework-dependent (needs the .NET 10 runtime, smaller). Unpack a zip and run taskus.exe. See README.md and Docs/design.md."
+            --notes "Windows x64, Linux x64 and macOS (Apple silicon) builds, each in two kinds: self-contained (no .NET needed) or framework-dependent (needs the .NET 10 runtime, smaller). Unpack a zip and run taskus.exe (Windows) or taskus (Linux, macOS; chmod +x taskus if needed). Secrets protection (DPAPI, taskus secrets protect) is Windows only; on Linux and macOS allow only the account that runs taskus to read secrets.yaml (chmod 600). The macOS build is not signed: run xattr -dr com.apple.quarantine <folder> on the unpacked folder. See README.md and Docs/design.md."
+
+  nuget:
+    # Separate job: only it can request the OIDC token, the tests and builds above cannot.
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # Trusted Publishing: exchange the GitHub OIDC token for a short-lived NuGet key
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: nupkg
+          path: nupkg
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+      - name: NuGet login
+        id: login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: vdasus   # nuget.org profile name; the trusted publishing policy is set up under it
+      - name: Push Taskus.Core
+        run: dotnet nuget push "nupkg/*.nupkg" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate

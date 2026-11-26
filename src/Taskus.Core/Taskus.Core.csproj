@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Taskus.Core</AssemblyName>
+    <RootNamespace>Taskus</RootNamespace>
+    <Version>0.8.0</Version>
+    <Authors>vdasus</Authors>
+    <Copyright>Copyright (C) 2026 vdasus</Copyright>
+    <Description>Task model, validation, mapping, sources and sinks of Taskus, a command-line tool that reads rows from a source, maps each row and writes it to a sink. Used by the taskus CLI and Taskus Studio.</Description>
+    <PackageId>Taskus.Core</PackageId>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/vdasus/taskus</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/vdasus/taskus</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Taskus.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CSharpFunctionalExtensions" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="MiniExcel" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Polly.Core" />
+    <PackageReference Include="Scriban" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="System.Data.Odbc" />
+    <PackageReference Include="System.IO.Abstractions" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+</Project>

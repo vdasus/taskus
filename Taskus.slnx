@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Taskus.Core/Taskus.Core.csproj" />
     <Project Path="src/Taskus/Taskus.csproj" />
   </Folder>
   <Folder Name="/tests/">

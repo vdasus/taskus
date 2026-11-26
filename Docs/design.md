@@ -44,6 +44,7 @@ taskus run tasks/                           # every task in a folder
 taskus run tasks/import-clients.yaml --dry-run
 taskus validate tasks/                      # check task files without running them
 taskus schema > task.schema.json            # JSON Schema of task files
+taskus --version                            # print the version and exit
 ```
 
 `--dry-run` reads and maps, logs what would be written, and writes nothing.
@@ -459,15 +460,28 @@ Not done yet, added when a task needs them: pagination for the `http` source, ke
 Taskus.slnx
 global.json
 Directory.Packages.props        # central package versions
-src/Taskus/                     # console executable
+src/Taskus/                     # console executable: Program.cs, App.cs, Logging.cs
+src/Taskus.Core/                # library and NuGet package Taskus.Core: everything else
 tests/Taskus.Tests/
 examples/                       # sample tasks, secrets.yaml.example
 schema/task.schema.json         # JSON Schema of task files, generated
 Docs/
 ```
 
-There is no separate core library until a second consumer needs one. There is no DI container either:
-`CompositionRoot` is the one place that turns validated task options into a runner with its source, mapper and
+The task model, loading and validation, secrets, mapping, the pipeline and the transports live in the library
+`Taskus.Core` (assembly and NuGet package of that name; namespaces stay `Taskus.*`). The `taskus` executable is a
+thin layer over it: command-line parsing (`Program.cs`), the `run` and `validate` commands (`App.cs`) and Serilog set-up (`Logging.cs`).
+The library exists for a second consumer, [Taskus Studio](https://github.com/vdasus/taskus-studio), a cross-platform
+Avalonia editor for task files. Besides the task model and validation, Studio uses two public entry points:
+
+- `TaskLoader.Parse(string text, string defaultName, JsonObject secrets)` loads and validates task file text held
+  in memory; `defaultName` is the task name when the text has no `name`.
+- `ExcelSource.ReadFile(IFileSystem fs, string file, string? sheet)` reads the rows of one Excel file, for a
+  preview of a source.
+
+The library API follows the needs of `taskus` and Studio and may change between minor versions.
+
+There is no DI container: `CompositionRoot` is the one place that turns validated task options into a runner with its source, mapper and
 sink. File access goes through `IFileSystem` (System.IO.Abstractions), created once in `App`; tests replace it
 with `MockFileSystem`. Logging is the exception: Serilog and the configuration reader open their files themselves. A test checks that `schema/task.schema.json` matches the model; after changing `TaskOptions`, regenerate it
 with `taskus schema > schema/task.schema.json`.
@@ -485,7 +499,17 @@ dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingl
 
 Every dependency is managed code (the ODBC driver itself is installed separately), so the result is `taskus.exe` plus `appsettings.json`, which stays outside the
 executable so it can be edited. Trimming is off. With `--self-contained false` the same command builds a
-framework-dependent `taskus.exe` that needs the .NET 10 runtime; releases ship both.
+framework-dependent `taskus.exe` that needs the .NET 10 runtime. Releases ship both kinds for `win-x64`,
+`linux-x64` and `osx-arm64` (on Linux and macOS the executable is `taskus`; the macOS build is not signed),
+together with the `Taskus.Core` package (`.nupkg`), which a separate job of the release workflow pushes to nuget.org through Trusted Publishing (GitHub OIDC token
+exchanged for a short-lived key; only that job has the `id-token: write` permission).
+
+### Versioning
+
+Both projects carry the same `<Version>` (`src/Taskus/Taskus.csproj`, `src/Taskus.Core/Taskus.Core.csproj`); a
+release bumps both. Taskus Studio shares the major and minor version with Taskus: Studio `X.Y.n` works with Taskus
+`X.Y.*`. Task file schema changes (a new or renamed key, a changed meaning of a field) are therefore made only in
+minor releases. A patch release may tighten validation but does not change the schema.
 
 ## Dependencies
 

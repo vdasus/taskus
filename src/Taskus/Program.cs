@@ -9,6 +9,7 @@ using Taskus.Config;
 
 var dryRun = false;
 var help = false;
+var showVersion = false;
 var currentUser = false;
 var secretsFile = Path.Combine(AppContext.BaseDirectory, "secrets.yaml");
 var logFolder = Path.Combine(AppContext.BaseDirectory, "logs");
@@ -44,6 +45,7 @@ var options = new OptionSet
         "log-level=", "minimum log {LEVEL}: trace | debug | information | warning | error, default: from appsettings.json",
         v => logLevel = Logging.TryParseLevel(v, out var level) ? level : throw new OptionException($"unknown log level '{v}'", "--log-level")
     },
+    { "version", "print the version and exit", v => showVersion = v != null },
     { "h|help", "show this help", v => help = v != null },
 };
 
@@ -63,6 +65,12 @@ if (string.Equals(Path.GetExtension(secretsFile), ".sec", StringComparison.Ordin
 {
     Console.Error.WriteLine($"taskus: --secrets takes the name of the plain file, e.g. {Path.ChangeExtension(secretsFile, ".yaml")}; its protected copy {secretsFile} is found from it");
     return ExitCode.Invalid;
+}
+
+if (showVersion && !help)
+{
+    Console.WriteLine(version);
+    return ExitCode.Success;
 }
 
 if (!help && arguments is ["schema"])

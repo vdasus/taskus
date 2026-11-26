@@ -155,4 +155,14 @@ public class ExamplesTests
 
         mapped.Value.Should().BeEquivalentTo(new Dictionary<string, object?> { ["Telefonas"] = "+37060000000", ["Tekstas"] = "Labas" });
     }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void ExcelReadFile_SampleClients_ReturnsDataRowsNumberedFromTwo()
+    {
+        var rows = ExcelSource.ReadFile(Fs, Path.Combine(Examples(), "clients.xlsx"), null).ToList();
+
+        rows.Select(r => r.Number).Should().Equal(2, 3, 4);
+        rows[0].Values["Kliento Nr"].Should().Be("K-001");
+    }
 }

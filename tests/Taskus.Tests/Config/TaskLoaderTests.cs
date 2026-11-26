@@ -197,4 +197,25 @@ public class TaskLoaderTests
         result.IsFailure.Should().BeTrue();
         result.Error.Should().Contain("broken.yaml");
     }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    [Trait("Priority", "High")]
+    public void Parse_TextWithoutName_UsesDefaultName()
+    {
+        var result = TaskLoader.Parse("source: {type: excel, folder: in}\nsink: {type: excel, folder: out, file: x.xlsx}", "from-editor", Secrets.None);
+
+        result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error : "");
+        result.Value.Name.Should().Be("from-editor");
+        result.Value.Source.Should().Be(new ExcelSourceOptions { Folder = "in" });
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Parse_UnknownKey_ReportsPathWithoutFileName()
+    {
+        var result = TaskLoader.Parse("source: {type: excel, folder: in, procesed: x}\nsink: {type: excel, folder: out, file: x.xlsx}", "t", Secrets.None);
+
+        result.Error.Should().Be("source.procesed: unknown setting");
+    }
 }

@@ -11,14 +11,17 @@ namespace Taskus.Config;
 public static partial class TaskLoader
 {
     public static Result<TaskOptions> Load(IFileSystem fs, string file, JsonObject secrets) =>
-        YamlJson.Parse(fs.File.ReadAllText(file))
+        Parse(fs.File.ReadAllText(file), fs.Path.GetFileNameWithoutExtension(file), secrets).MapError(error => $"{file}: {error}");
+
+    /// <summary>Task file text → secrets resolved → bound → validated. <paramref name="defaultName"/> is used when the task has no name.</summary>
+    public static Result<TaskOptions> Parse(string text, string defaultName, JsonObject secrets) =>
+        YamlJson.Parse(text)
             .Bind(tree => Secrets.Resolve(tree, secrets))
             .Bind(tree => tree is JsonObject root ? Result.Success(root) : Result.Failure<JsonObject>("must be a mapping"))
             .Bind(root => CheckType(root, "source", typeof(SourceOptions)).Bind(() => CheckType(root, "sink", typeof(SinkOptions))).Map(() => root))
             .Bind(Bind)
-            .Map(task => task with { Name = task.Name ?? fs.Path.GetFileNameWithoutExtension(file) })
-            .Bind(TaskValidation.Validate)
-            .MapError(error => $"{file}: {error}");
+            .Map(task => task with { Name = task.Name ?? defaultName })
+            .Bind(TaskValidation.Validate);
 
     // A missing or unknown "type" would otherwise surface as "abstract types are not supported".
     private static Result CheckType(JsonObject root, string section, Type baseType)
