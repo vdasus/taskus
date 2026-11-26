@@ -1,8 +1,6 @@
 using System.IO.Abstractions;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace Taskus.Config;
@@ -18,15 +16,14 @@ public static partial class TaskLoader
         YamlJson.Parse(text)
             .Bind(tree => Secrets.Resolve(tree, secrets))
             .Bind(tree => tree is JsonObject root ? Result.Success(root) : Result.Failure<JsonObject>("must be a mapping"))
-            .Bind(root => CheckType(root, "source", typeof(SourceOptions)).Bind(() => CheckType(root, "sink", typeof(SinkOptions))).Map(() => root))
+            .Bind(root => CheckType(root, "source", Connectors.SourceTypes).Bind(() => CheckType(root, "sink", Connectors.SinkTypes)).Map(() => root))
             .Bind(Bind)
             .Map(task => task with { Name = task.Name ?? defaultName })
             .Bind(TaskValidation.Validate);
 
     // A missing or unknown "type" would otherwise surface as "abstract types are not supported".
-    private static Result CheckType(JsonObject root, string section, Type baseType)
+    private static Result CheckType(JsonObject root, string section, IReadOnlyList<string> types)
     {
-        var types = baseType.GetCustomAttributes<JsonDerivedTypeAttribute>().Select(a => (string)a.TypeDiscriminator!).ToList();
         if (root[section] is not JsonObject settings)
             return root.ContainsKey(section) ? Result.Failure($"{section}: must be a mapping") : Result.Success(); // missing: binding reports it
         var type = settings["type"]?.GetValue<string>().ToLowerInvariant();

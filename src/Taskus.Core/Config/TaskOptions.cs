@@ -121,11 +121,7 @@ public interface IDbSinkOptions
     TransactionScope Transaction { get; }
 }
 
-[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
-[JsonDerivedType(typeof(ExcelSourceOptions), "excel")]
-[JsonDerivedType(typeof(PostgresSourceOptions), "postgres")]
-[JsonDerivedType(typeof(OdbcSourceOptions), "odbc")]
-[JsonDerivedType(typeof(HttpSourceOptions), "http")]
+// The type names and their records are listed in Connectors.
 public abstract record SourceOptions;
 
 [Description("Every .xlsx file matching pattern in folder is one unit. The first sheet row holds the field names.")]
@@ -195,12 +191,7 @@ public sealed record HttpSourceOptions : SourceOptions, IHttpEndpointOptions
     public double RateLimit { get; init; }
 }
 
-[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
-[JsonDerivedType(typeof(ExcelSinkOptions), "excel")]
-[JsonDerivedType(typeof(PostgresSinkOptions), "postgres")]
-[JsonDerivedType(typeof(OdbcSinkOptions), "odbc")]
-[JsonDerivedType(typeof(SmtpSinkOptions), "smtp")]
-[JsonDerivedType(typeof(HttpSinkOptions), "http")]
+// The type names and their records are listed in Connectors.
 public abstract record SinkOptions;
 
 [Description("Writes each unit to one .xlsx file.")]

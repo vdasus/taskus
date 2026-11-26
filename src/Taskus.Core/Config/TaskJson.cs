@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 
@@ -26,6 +27,7 @@ internal static class TaskJson
             PropertyNameCaseInsensitive = true,
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             AllowOutOfOrderMetadataProperties = true, // "type" need not be the first key
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { Connectors.AddDerivedTypes } },
         };
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         if (lenient)

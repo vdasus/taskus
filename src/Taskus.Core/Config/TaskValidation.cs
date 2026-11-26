@@ -1,5 +1,6 @@
 using FluentValidation;
 using FluentValidation.Results;
+using FluentValidation.Validators;
 using MimeKit;
 using Taskus.Mapping;
 
@@ -37,16 +38,10 @@ public static class TaskValidation
     {
         public TaskValidator()
         {
-            RuleFor(x => x.Source).SetInheritanceValidator(v => v
-                .Add(new ExcelSourceValidator())
-                .Add(new DbSourceValidator<PostgresSourceOptions>())
-                .Add(new DbSourceValidator<OdbcSourceOptions>())
-                .Add(new HttpSourceValidator()));
-            RuleFor(x => x.Sink).SetInheritanceValidator(v => v
-                .Add(new ExcelSinkValidator())
-                .Add(new DbSinkValidator<PostgresSinkOptions>())
-                .Add(new DbSinkValidator<OdbcSinkOptions>())
-                .Add(new HttpSinkValidator()));
+            RuleFor(x => x.Source).SetAsyncValidator(new ConnectorValidator<SourceOptions>(
+                Connectors.All.Where(c => c.Source is not null).Select(c => (c.Source!.OptionsType, c.Source.Validator))));
+            RuleFor(x => x.Sink).SetAsyncValidator(new ConnectorValidator<SinkOptions>(
+                Connectors.All.Where(c => c.Sink is not null).Select(c => (c.Sink!.OptionsType, c.Sink.Validator))));
             RuleFor(x => x.Map).Custom((map, context) =>
             {
                 foreach (var (field, text) in map)
@@ -69,6 +64,16 @@ public static class TaskValidation
         }
     }
 
+    // SetInheritanceValidator wants each options type at compile time; the connectors give it as a Type.
+    private sealed class ConnectorValidator<TBase> : PolymorphicValidator<TaskOptions, TBase>
+    {
+        public ConnectorValidator(IEnumerable<(Type Options, IValidator Validator)> parts)
+        {
+            foreach (var (options, validator) in parts)
+                Add(options, validator);
+        }
+    }
+
     private sealed class SmtpValidator : AbstractValidator<SmtpOptions>
     {
         public SmtpValidator()
@@ -79,7 +84,7 @@ public static class TaskValidation
         }
     }
 
-    private sealed class ExcelSourceValidator : AbstractValidator<ExcelSourceOptions>
+    internal sealed class ExcelSourceValidator : AbstractValidator<ExcelSourceOptions>
     {
         public ExcelSourceValidator()
         {
@@ -88,7 +93,7 @@ public static class TaskValidation
         }
     }
 
-    private sealed class DbSourceValidator<T> : AbstractValidator<T> where T : IDbSourceOptions
+    internal sealed class DbSourceValidator<T> : AbstractValidator<T> where T : IDbSourceOptions
     {
         public DbSourceValidator()
         {
@@ -97,7 +102,7 @@ public static class TaskValidation
         }
     }
 
-    private sealed class ExcelSinkValidator : AbstractValidator<ExcelSinkOptions>
+    internal sealed class ExcelSinkValidator : AbstractValidator<ExcelSinkOptions>
     {
         public ExcelSinkValidator()
         {
@@ -107,7 +112,7 @@ public static class TaskValidation
         }
     }
 
-    private sealed class DbSinkValidator<T> : AbstractValidator<T> where T : IDbSinkOptions
+    internal sealed class DbSinkValidator<T> : AbstractValidator<T> where T : IDbSinkOptions
     {
         public DbSinkValidator()
         {
@@ -116,7 +121,7 @@ public static class TaskValidation
         }
     }
 
-    private abstract class HttpEndpointValidator<T> : AbstractValidator<T> where T : IHttpEndpointOptions
+    internal abstract class HttpEndpointValidator<T> : AbstractValidator<T> where T : IHttpEndpointOptions
     {
         protected HttpEndpointValidator()
         {
@@ -136,7 +141,7 @@ public static class TaskValidation
         }
     }
 
-    private sealed class HttpSourceValidator : HttpEndpointValidator<HttpSourceOptions>;
+    internal sealed class HttpSourceValidator : HttpEndpointValidator<HttpSourceOptions>;
 
-    private sealed class HttpSinkValidator : HttpEndpointValidator<HttpSinkOptions>;
+    internal sealed class HttpSinkValidator : HttpEndpointValidator<HttpSinkOptions>;
 }

@@ -491,6 +491,13 @@ Avalonia editor for task files. Besides the task model and validation, Studio us
 
 The library API follows the needs of `taskus` and Studio and may change between minor versions.
 
+Connectors are listed once, in `Connectors.All`: each entry is a `type` name with an optional source part and an
+optional sink part, and each part holds its options record, its validator and its factory. JSON binding (a
+`DefaultJsonTypeInfoResolver` modifier), the type check in `TaskLoader`, `TaskValidation`, the schema and
+`CompositionRoot` read that list; Studio reads `Connectors.SourceTypes`, `SinkTypes`, `SourceOptionsType` and
+`SinkOptionsType`. A new connector is one entry there plus its options record, validator and transport. Loading
+connectors from plugin assemblies is not implemented; the list is the extension point for it.
+
 There is no DI container: `CompositionRoot` is the one place that turns validated task options into a runner with its source, mapper and
 sink. File access goes through `IFileSystem` (System.IO.Abstractions), created once in `App`; tests replace it
 with `MockFileSystem`. Logging is the exception: Serilog and the configuration reader open their files themselves. A test checks that `schema/task.schema.json` matches the model; after changing `TaskOptions`, regenerate it

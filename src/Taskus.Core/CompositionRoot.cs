@@ -3,7 +3,6 @@ using Serilog;
 using Taskus.Config;
 using Taskus.Mapping;
 using Taskus.Pipeline;
-using Taskus.Transports;
 
 namespace Taskus;
 
@@ -16,30 +15,8 @@ public static class CompositionRoot
         var taskLog = log.ForContext("Task", task.Name);
         taskLog.Debug("Source {Source}, sink {Sink}, {FieldCount} mapped fields, onError {OnError}, maxErrors {MaxErrors}, hidden fields {LogExclude}",
             task.Source.GetType().Name, task.Sink.GetType().Name, task.Map.Count, task.OnError, task.MaxErrors, task.LogExclude);
-        return new Runner(task.Name!, Source(task.Source, taskLog, fs), RowMapper.Create(task.Map).Value, Sink(task.Sink, task.Smtp, taskLog, fs),
-            task.OnError, task.MaxErrors, taskLog, task.LogExclude);
+        var context = new ConnectorContext(task, taskLog, fs);
+        return new Runner(task.Name!, Connectors.SourceFor(task.Source).Create(task.Source, context), RowMapper.Create(task.Map).Value,
+            Connectors.SinkFor(task.Sink).Create(task.Sink, context), task.OnError, task.MaxErrors, taskLog, task.LogExclude);
     }
-
-    private static ISource Source(SourceOptions options, ILogger log, IFileSystem fs) => options switch
-    {
-        ExcelSourceOptions o => new ExcelSource(fs, o.Folder, o.Pattern, o.Sheet, o.Processed, o.Failed, log),
-        PostgresSourceOptions o => new DbSource(PostgresDialect.Instance, o.Connection, o.Query, log),
-        OdbcSourceOptions o => new DbSource(OdbcDialect.Instance, o.Connection, o.Query, log),
-        HttpSourceOptions o => new HttpSource(
-            new HttpEndpoint(o, "source", log, Handler()), o.Body is null ? null : TaskTemplate.Parse(o.Body).Value, o.Items),
-        _ => throw new NotSupportedException(options.GetType().Name),
-    };
-
-    private static ISink Sink(SinkOptions options, SmtpOptions? smtp, ILogger log, IFileSystem fs) => options switch
-    {
-        ExcelSinkOptions o => new ExcelSink(fs, o.Folder, TaskTemplate.Parse(o.File).Value, o.Overwrite, o.Sheet, log),
-        PostgresSinkOptions o => new DbSink(PostgresDialect.Instance, o.Connection, o.Table, o.Transaction, log),
-        OdbcSinkOptions o => new DbSink(OdbcDialect.Instance, o.Connection, o.Table, o.Transaction, log),
-        SmtpSinkOptions o => new SmtpSink(smtp!, o.Html, log),
-        HttpSinkOptions o => new HttpSink(new HttpEndpoint(o, "sink", log, Handler()), o.Body is null ? null : TaskTemplate.Parse(o.Body).Value),
-        _ => throw new NotSupportedException(options.GetType().Name),
-    };
-
-    // A redirect would carry custom headers (X-Api-Key) to another host and turn a POST into a GET: report 3xx instead.
-    private static HttpClientHandler Handler() => new() { AllowAutoRedirect = false };
 }
