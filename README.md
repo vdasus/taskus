@@ -10,7 +10,7 @@ an HTTP API), convert each row, and put it into a sink (a database table, an Exc
 Each task is a YAML file. Taskus runs it manually or from Windows Task Scheduler: it checks the input,
 processes what it finds, reports the result, and exits.
 
-Status: version 0.8.0, second development iteration. Sources: `excel`, `postgres`, `odbc`, `http`. Sinks: `postgres`, `odbc`, `excel`, `smtp`, `http`.
+Status: version 0.8.1, second development iteration. Sources: `excel`, `postgres`, `odbc`, `http`. Sinks: `postgres`, `odbc`, `excel`, `smtp`, `http`.
 HTTP calls support retries and a rate limit.
 Design and task file reference: [Docs/design.md](Docs/design.md).
 
@@ -87,7 +87,7 @@ Builds for Windows x64, Linux x64 and macOS on Apple silicon are attached to
 is `win-x64`, `linux-x64` or `osx-arm64`. Each zip has a `.sha256` checksum file. Pick the zip for your system and
 one of two kinds: `self-contained` needs nothing installed; `framework-dependent` is much smaller but needs the
 [.NET 10 runtime](https://dotnet.microsoft.com/download/dotnet/10.0). A zip holds the single-file executable
-(`taskus.exe` on Windows, `taskus` on Linux and macOS), `appsettings.json`, `README.md`, `LICENSE` and `examples/`.
+(`taskus.exe` on Windows, `taskus` on Linux and macOS), `taskus.json`, `README.md`, `LICENSE` and `examples/`.
 
 Unpack the zip and copy `examples/secrets.yaml.example` to `secrets.yaml` next to the executable. On Windows, run
 `taskus secrets protect` to encrypt it (DPAPI). Linux and macOS have no secrets protection: allow only the account
@@ -106,7 +106,7 @@ dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingl
 dotnet publish src/Taskus -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish/win-x64-fdd
 ```
 
-The result is `taskus.exe` and `appsettings.json` (logging settings). For Linux or macOS use `-r linux-x64` or
+The result is `taskus.exe` and `taskus.json` (logging settings). For Linux or macOS use `-r linux-x64` or
 `-r osx-arm64`; the executable is then `taskus`. The self-contained build needs no .NET
 installation; the framework-dependent one needs the .NET 10 runtime. Logs go to `logs` next to the executable:
 a text file and a JSON file per run, `taskus_<yyyyMMdd_HHmmss>_<process id>.*`. Files older than 90 days are

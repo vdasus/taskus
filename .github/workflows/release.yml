@@ -33,7 +33,7 @@ jobs:
               SELF=$([ $KIND = self-contained ] && echo true || echo false)
               dotnet publish src/Taskus -c Release -r $RID --self-contained $SELF -p:PublishSingleFile=true -p:Version=$VERSION -o publish/$RID-$KIND
               mkdir -p release/$NAME
-              cp publish/$RID-$KIND/$EXE publish/$RID-$KIND/appsettings.json README.md LICENSE release/$NAME/
+              cp publish/$RID-$KIND/$EXE publish/$RID-$KIND/taskus.json README.md LICENSE release/$NAME/
               cp -r examples release/$NAME/
               (cd release && zip -qr $NAME.zip $NAME && sha256sum $NAME.zip > $NAME.zip.sha256)
             done

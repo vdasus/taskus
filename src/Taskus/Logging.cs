@@ -6,7 +6,7 @@ using Serilog.Settings.Configuration;
 
 namespace Taskus;
 
-/// <summary>Builds the logger from the <c>Serilog</c> section of <c>appsettings.json</c>.</summary>
+/// <summary>Builds the logger from the <c>Serilog</c> section of <c>taskus.json</c>.</summary>
 public static class Logging
 {
     /// <remarks>

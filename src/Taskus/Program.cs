@@ -42,7 +42,7 @@ var options = new OptionSet
         v => logDays = int.TryParse(v, out var days) && days >= 0 ? days : throw new OptionException($"'{v}' is not a number of days", "--log-days")
     },
     {
-        "log-level=", "minimum log {LEVEL}: trace | debug | information | warning | error, default: from appsettings.json",
+        "log-level=", "minimum log {LEVEL}: trace | debug | information | warning | error, default: from taskus.json",
         v => logLevel = Logging.TryParseLevel(v, out var level) ? level : throw new OptionException($"unknown log level '{v}'", "--log-level")
     },
     { "version", "print the version and exit", v => showVersion = v != null },
@@ -109,16 +109,20 @@ if (help || arguments.Count != 2 || arguments[0] is not ("run" or "validate"))
     return help ? ExitCode.Success : ExitCode.Invalid;
 }
 
+// Before 0.8.1 the logging settings were in appsettings.json; without this its settings would be ignored silently.
+if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "taskus.json")) && File.Exists(Path.Combine(AppContext.BaseDirectory, "appsettings.json")))
+    Console.Error.WriteLine("taskus: appsettings.json is no longer read; rename it to taskus.json. Logging uses the defaults now.");
+
 var mask = new SecretMask();
 try
 {
     Logging.Cleanup(logFolder, logDays, DateTime.Now);
-    Log.Logger = Logging.Create(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), logFolder, DateTime.Now, mask, logLevel, Environment.ProcessId);
+    Log.Logger = Logging.Create(Path.Combine(AppContext.BaseDirectory, "taskus.json"), logFolder, DateTime.Now, mask, logLevel, Environment.ProcessId);
 }
 catch (Exception ex)
 {
-    // A typo in appsettings.json: without this the runtime prints a stack trace and returns its own exit code.
-    Console.Error.WriteLine($"taskus: logging cannot start, check appsettings.json: {ex.Message}");
+    // A typo in taskus.json: without this the runtime prints a stack trace and returns its own exit code.
+    Console.Error.WriteLine($"taskus: logging cannot start, check taskus.json: {ex.Message}");
     return ExitCode.Invalid;
 }
 

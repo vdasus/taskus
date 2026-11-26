@@ -9,8 +9,8 @@ public class LoggingTests
     private static readonly DateTime Started = new(2026, 10, 27, 10, 15, 0);
     private static readonly string Run = $"20261027_101500_{Environment.ProcessId}"; // {run}: start time and process id
 
-    // The appsettings.json that ships next to taskus.exe; the test project copies it to the test output.
-    private static readonly string ShippedSettings = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+    // The taskus.json that ships next to taskus.exe; the test project copies it to the test output.
+    private static readonly string ShippedSettings = Path.Combine(AppContext.BaseDirectory, "taskus.json");
 
     [Fact]
     [Trait("Category", "Integration")]
@@ -40,7 +40,7 @@ public class LoggingTests
     {
         using var temp = new TempFolder();
         var target = temp.File("elsewhere", "app_{run}.log");
-        var settings = temp.Write("appsettings.json",
+        var settings = temp.Write("taskus.json",
             JsonSerializer.Serialize(new { Serilog = new { WriteTo = new[] { new { Name = "File", Args = new { path = target } } } } }));
 
         using (var log = Logging.Create(settings, temp.File("logs"), Started, new SecretMask()))

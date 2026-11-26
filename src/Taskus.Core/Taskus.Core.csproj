@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Taskus.Core</AssemblyName>
     <RootNamespace>Taskus</RootNamespace>
-    <Version>0.8.0</Version>
+    <Version>0.8.1</Version>
     <Authors>vdasus</Authors>
     <Copyright>Copyright (C) 2026 vdasus</Copyright>
     <Description>Task model, validation, mapping, sources and sinks of Taskus, a command-line tool that reads rows from a source, maps each row and writes it to a sink. Used by the taskus CLI and Taskus Studio.</Description>

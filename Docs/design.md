@@ -11,7 +11,7 @@ Typical tasks:
 - Run a `select` against a database, call an external HTTP API for each row.
 - Read Excel files with ids, call an HTTP API for each id.
 
-A task is a YAML file. Taskus is a console executable with an `appsettings.json` for logging; the machine that runs it needs neither the
+A task is a YAML file. Taskus is a console executable with a `taskus.json` for logging; the machine that runs it needs neither the
 .NET SDK nor the .NET runtime.
 
 ## Model
@@ -327,7 +327,7 @@ source:
 
 ### Logging and reporting
 
-- Logging is configured in the `Serilog` section of `appsettings.json` next to the executable (format of
+- Logging is configured in the `Serilog` section of `taskus.json` next to the executable (format of
   Serilog.Settings.Configuration). The shipped file writes:
   - to the console, `Information` and above;
   - a text log per run, `taskus_<yyyyMMdd_HHmmss>_<process id>.log`;
@@ -339,16 +339,17 @@ source:
 - Every run adds its own files, so at start Taskus deletes `taskus_*` files older than 90 days from the log
   folder. `--log-days=N` changes the age; `--log-days=0` keeps every file. Files written elsewhere through an
   absolute `path` are not deleted.
-- When `appsettings.json` cannot be read, Taskus prints the reason and ends with exit code `2`.
-- Sinks, levels and output templates change in `appsettings.json` without a rebuild. The executable includes the
+- When `taskus.json` cannot be read, Taskus prints the reason and ends with exit code `2`.
+- Sinks, levels and output templates change in `taskus.json` without a rebuild. The executable includes the
   Console and File sinks; another sink package needs a rebuild with that package referenced.
-- Without `appsettings.json`, Taskus logs to the console and to a text file per run.
+- Without `taskus.json`, Taskus logs to the console and to a text file per run. Versions before 0.8.1 read
+  `appsettings.json`; when only that file is found, Taskus says to rename it.
 - Logging is structured: every message is a template with named properties (`{Task}`, `{Unit}`, `{Row}`,
   `{Url}`, ...), and the JSON log keeps them as separate fields. Events of a task also carry a `Task` property.
 
 ### Log levels
 
-The minimum level is `Information` in the shipped `appsettings.json`. To look into a problem, raise the detail for
+The minimum level is `Information` in the shipped `taskus.json`. To look into a problem, raise the detail for
 one run with `--log-level` (`trace`, `debug`, `information`, `warning`, `error`); it overrides the settings file.
 The console stays at `Information`; the files get the extra detail.
 
@@ -497,7 +498,7 @@ Publishing:
 dotnet publish src/Taskus -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 ```
 
-Every dependency is managed code (the ODBC driver itself is installed separately), so the result is `taskus.exe` plus `appsettings.json`, which stays outside the
+Every dependency is managed code (the ODBC driver itself is installed separately), so the result is `taskus.exe` plus `taskus.json`, which stays outside the
 executable so it can be edited. Trimming is off. With `--self-contained false` the same command builds a
 framework-dependent `taskus.exe` that needs the .NET 10 runtime. Releases ship both kinds for `win-x64`,
 `linux-x64` and `osx-arm64` (on Linux and macOS the executable is `taskus`; the macOS build is not signed),
@@ -532,8 +533,8 @@ All dependencies are free and open source. Versions are pinned in `Directory.Pac
 | Serilog                                 | 4.4.0   | Apache-2.0   | Logging                              |
 | Serilog.Sinks.File                      | 7.0.0   | Apache-2.0   | Log file per run                     |
 | Serilog.Sinks.Console                   | 6.1.1   | Apache-2.0   | Console log                          |
-| Serilog.Settings.Configuration          | 10.0.1  | Apache-2.0   | Logging set up from appsettings.json |
-| Microsoft.Extensions.Configuration.Json | 10.0.14 | MIT          | Reads appsettings.json               |
+| Serilog.Settings.Configuration          | 10.0.1  | Apache-2.0   | Logging set up from taskus.json      |
+| Microsoft.Extensions.Configuration.Json | 10.0.14 | MIT          | Reads taskus.json                    |
 
 Tests:
 

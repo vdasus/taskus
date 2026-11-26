@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>taskus</AssemblyName>
     <RootNamespace>Taskus</RootNamespace>
-    <Version>0.8.0</Version>
+    <Version>0.8.1</Version>
     <Authors>vdasus</Authors>
     <Copyright>Copyright (C) 2026 vdasus</Copyright>
     <InvariantGlobalization>false</InvariantGlobalization>
@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <!-- Kept next to taskus.exe, outside the single file, so it can be edited. -->
-    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Update="taskus.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
 
   <ItemGroup>
